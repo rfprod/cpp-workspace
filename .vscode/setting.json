@@ -1,0 +1,42 @@
+{
+  "[cpp]": {
+    "editor.defaultFormatter": "xaver.clang-format"
+  },
+  "[sh]": {
+    "editor.defaultFormatter": "timonwong.shellcheck"
+  },
+  "[shellscript]": {
+    "editor.defaultFormatter": "foxundermoon.shell-format"
+  },
+  "editor.codeActionsOnSave": {
+    "source.organizeImports": "never",
+    "source.fixAll.cpp": "explicit",
+    "source.fixAll.clang": "explicit"
+  },
+  "editor.formatOnPaste": true,
+  "editor.formatOnSave": true,
+  "files.autoSave": "afterDelay",
+  "files.autoSaveDelay": 1500,
+  "files.trimTrailingWhitespace": true,
+  "shellcheck.customArgs": [
+    "-x"
+  ],
+  "shellcheck.enable": true,
+  "shellcheck.enableQuickFix": false,
+  "shellcheck.exclude": [],
+  "shellcheck.executablePath": "shellcheck",
+  "shellcheck.ignorePatterns": {
+    "**/.git/objects/**": true,
+    "**/.git/subtree-cache/**": true,
+    "**/node_modules/*/**": true
+  },
+  "shellcheck.run": "onType",
+  "shellcheck.useWorkspaceRootAsCwd": true,
+  "cmake.buildDirectory": "${workspaceFolder}/build/Debug",
+  "cmake.configureSettings": {
+    "CMAKE_TOOLCHAIN_FILE": "${workspaceFolder}/build/Debug/generators/conan_toolchain.cmake",
+    "CMAKE_BUILD_TYPE": "Debug",
+    "CMAKE_C_COMPILER": "gcc-13",
+    "CMAKE_CXX_COMPILER": "g++-13"
+  }
+}

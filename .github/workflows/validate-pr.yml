@@ -1,0 +1,149 @@
+name: validate-pr
+
+on:
+  pull_request:
+    branches: [main]
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+env:
+  HISTFILE: ''
+
+concurrency:
+  group: ${{ github.head_ref }}.${{ github.sha }}.validate-pr
+  cancel-in-progress: true
+
+jobs:
+  premerge:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Source changed
+        id: src-changed
+        run: |
+          bash ./tools/shell/actions/detect-changes.sh \
+            --pattern '^src/.*$' \
+            --compare-with origin/${{ github.base_ref }}
+          if [[ -f "$GITHUB_OUTPUT" ]] && grep -q "changed_files" "$GITHUB_OUTPUT"; then
+            echo "change=true" >> $GITHUB_OUTPUT
+          else
+            echo "change=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Dependencies changed
+        id: deps-changed
+        run: |
+          bash ./tools/shell/actions/detect-changes.sh \
+            --pattern '^(conanfile\.(txt|py)|CMakeLists\.txt)$' \
+            --compare-with origin/${{ github.base_ref }}
+          if [[ -f "$GITHUB_OUTPUT" ]] && grep -q "changed_files" "$GITHUB_OUTPUT"; then
+            echo "change=true" >> $GITHUB_OUTPUT
+          else
+            echo "change=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Shell tools changed
+        id: shelltools-changed
+        run: |
+          bash ./tools/shell/actions/detect-changes.sh \
+            --pattern '^tools/shell/.*$' \
+            --compare-with origin/${{ github.base_ref }}
+          if [[ -f "$GITHUB_OUTPUT" ]] && grep -q "changed_files" "$GITHUB_OUTPUT"; then
+            echo "change=true" >> $GITHUB_OUTPUT
+          else
+            echo "change=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Workspace cache
+        uses: ./.github/actions/workspace-cache
+
+      - name: Validate the commit messages
+        if: github.event.pull_request.user.login != 'dependabot[bot]'
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -U pip Commitizen
+          git checkout -b premerge
+          git fetch origin main:main
+          cz check --rev-range main..premerge
+          deactivate
+
+      - name: Lint shell
+        if: steps.shelltools-changed.outputs.change == 'true'
+        run: |
+          sudo apt-get install -y shellcheck
+          shellcheck tools/shell/*.sh tools/shell/utils/*.sh
+
+      - name: Install C++ compiler and build tools
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git python3-pip clang-format clang-tidy cppcheck
+
+      - name: Install Conan
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          source .venv/bin/activate
+          pip install conan
+          conan --version
+          conan profile detect --force
+
+      - name: Install project dependencies
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          source .venv/bin/activate
+          conan install . --build=missing -s build_type="${BUILD_TYPE}"
+          deactivate
+        env:
+          BUILD_TYPE: Release
+
+      - name: Check formatting
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          find src -name "*.cpp" -o -name "*.hpp" | xargs clang-format --dry-run -Werror
+
+      - name: Lint sources (cppcheck)
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem src/
+
+      - name: Lint sources (clang-tidy)
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          cmake -S . -B build/clang-tidy \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/build/${BUILD_TYPE}/generators/conan_toolchain.cmake" \
+            -DCMAKE_CXX_COMPILER=g++-13 \
+            -DCMAKE_CXX_CLANG_TIDY=clang-tidy
+          cmake --build build/clang-tidy --parallel
+        env:
+          BUILD_TYPE: Release
+
+      - name: Build test
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          cmake -S . -B "build/${BUILD_TYPE}" \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/build/${BUILD_TYPE}/generators/conan_toolchain.cmake" \
+            -DCMAKE_CXX_COMPILER=g++-13
+          cmake --build "build/${BUILD_TYPE}" \
+            --parallel
+        env:
+          BUILD_TYPE: Release
+
+      - name: Unit test
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          ctest --test-dir "build/${BUILD_TYPE}" \
+            --build-config "${BUILD_TYPE}" \
+            --output-on-failure
+        env:
+          BUILD_TYPE: Release
