@@ -1,0 +1,30 @@
+name: codeowners-validator
+
+on:
+  schedule:
+    - cron: '0 0 1 * *'
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+env:
+  HISTFILE: ''
+
+concurrency:
+  group: ${{ github.ref_name }}.${{ github.sha }}.codeowners-validator
+  cancel-in-progress: true
+
+jobs:
+  validate-codeowners:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: GitHub CODEOWNERS Validator
+        uses: mszostok/codeowners-validator@v0.7.4
+        with:
+          checks: 'files,duppatterns'
+          experimental_checks: 'notowned'

@@ -1,0 +1,313 @@
+name: trunk
+
+on:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    shell: bash --noprofile --norc -euo pipefail {0}
+
+env:
+  HISTFILE: ''
+
+concurrency:
+  group: ${{ github.ref_name }}.${{ github.sha }}.trunk
+  cancel-in-progress: true
+
+jobs:
+  test-build-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 2
+
+      - name: Source changed
+        id: src-changed
+        run: |
+          bash ./tools/shell/actions/detect-changes.sh \
+            --pattern '^src/.*$' \
+            --compare-with HEAD~1
+          if [[ -f "$GITHUB_OUTPUT" ]] && grep -q "changed_files" "$GITHUB_OUTPUT"; then
+            echo "change=true" >> $GITHUB_OUTPUT
+          else
+            echo "change=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Dependencies changed
+        id: deps-changed
+        run: |
+          bash ./tools/shell/actions/detect-changes.sh \
+            --pattern '^(conanfile\.(txt|py)|CMakeLists\.txt)$' \
+            --compare-with HEAD~1
+          if [[ -f "$GITHUB_OUTPUT" ]] && grep -q "changed_files" "$GITHUB_OUTPUT"; then
+            echo "change=true" >> $GITHUB_OUTPUT
+          else
+            echo "change=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Shell tools changed
+        id: shelltools-changed
+        run: |
+          bash ./tools/shell/actions/detect-changes.sh \
+            --pattern '^tools/shell/.*$' \
+            --compare-with HEAD~1
+          if [[ -f "$GITHUB_OUTPUT" ]] && grep -q "changed_files" "$GITHUB_OUTPUT"; then
+            echo "change=true" >> $GITHUB_OUTPUT
+          else
+            echo "change=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Workspace cache
+        uses: ./.github/actions/workspace-cache
+
+      - name: Lint shell
+        if: steps.shelltools-changed.outputs.change == 'true'
+        run: |
+          sudo apt-get install -y shellcheck
+          shellcheck tools/shell/*.sh tools/shell/utils/*.sh
+
+      - name: Install C++ compiler and build tools
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git python3-pip clang-format clang-tidy cppcheck
+
+      - name: Install Conan
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install conan
+          conan --version
+          deactivate
+
+      - name: Install project dependencies
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          source .venv/bin/activate
+          conan install . --build=missing -s build_type="${BUILD_TYPE}"
+          deactivate
+        env:
+          BUILD_TYPE: Release
+
+      - name: Check formatting
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          find src -name "*.cpp" -o -name "*.hpp" | xargs clang-format --dry-run -Werror
+
+      - name: Lint sources (cppcheck)
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem src/
+
+      - name: Lint sources (clang-tidy)
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          cmake -S . -B build/clang-tidy \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/build/${BUILD_TYPE}/generators/conan_toolchain.cmake" \
+            -DCMAKE_CXX_COMPILER=g++-13 \
+            -DCMAKE_CXX_CLANG_TIDY=clang-tidy
+          cmake --build build/clang-tidy --parallel
+        env:
+          BUILD_TYPE: Release
+
+      - name: Build release
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        id: build-release
+        run: |
+          cmake -S . -B "build/${BUILD_TYPE}" \
+            -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/build/${BUILD_TYPE}/generators/conan_toolchain.cmake" \
+            -DCMAKE_CXX_COMPILER=g++-13
+          cmake --build "build/${BUILD_TYPE}" \
+            --parallel
+          echo "build_dir=build" >> $GITHUB_OUTPUT
+        env:
+          BUILD_TYPE: Release
+
+      - name: Unit test
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          ctest --test-dir "build/${BUILD_TYPE}" \
+            --build-config "${BUILD_TYPE}" \
+            --output-on-failure
+        env:
+          BUILD_TYPE: Release
+
+      - name: Determine version
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        id: version
+        run: |
+          VERSION=$(grep -oP 'project\(\s*\w+\s+VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+
+          BUILD_NUMBER="$(date +%s)"
+
+          RELEASE_TAG="v${VERSION}+${BUILD_NUMBER}"
+          ARTIFACT_VERSION="${VERSION}-build-${BUILD_NUMBER}"
+
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "build_number=${BUILD_NUMBER}" >> $GITHUB_OUTPUT
+          echo "release_tag=${RELEASE_TAG}" >> $GITHUB_OUTPUT
+          echo "artifact_version=${ARTIFACT_VERSION}" >> $GITHUB_OUTPUT
+          echo "📦 Version: ${VERSION}, Build: ${BUILD_NUMBER}, Tag: ${RELEASE_TAG}"
+
+      - name: Package release artifacts
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        env:
+          BUILD_TYPE: Release
+          RELEASE_DIR: release
+          ARTIFACT_VERSION: ${{ steps.version.outputs.artifact_version }}
+        run: |
+          set -euo pipefail
+
+          BUILD_DIR="build/${BUILD_TYPE}"
+
+          if [ ! -d "$BUILD_DIR" ]; then
+            echo "::error::Build directory does not exist: $BUILD_DIR"
+            exit 1
+          fi
+
+          rm -rf "$RELEASE_DIR"
+          mkdir -p "$RELEASE_DIR/bin" \
+                   "$RELEASE_DIR/lib" \
+                   "$RELEASE_DIR/include"
+
+          echo "Copy executables..."
+          if [ -d "$BUILD_DIR/bin" ]; then
+            find "$BUILD_DIR/bin" \
+              -maxdepth 1 \
+              -type f \
+              -executable \
+              -exec cp -v {} "$RELEASE_DIR/bin/" \;
+          fi
+
+          echo "Copy fallback executables..."
+          find "$BUILD_DIR" \
+            -type f \
+            -executable \
+            ! -name "*.so*" \
+            ! -name "*.a" \
+            ! -name "*.o" \
+            ! -path "*/CMakeFiles/*" \
+            ! -path "*/generators/*" \
+            -exec cp -v {} "$RELEASE_DIR/bin/" \;
+
+          echo "Copy static libraries..."
+          if [ -d "$BUILD_DIR/lib" ]; then
+            find "$BUILD_DIR/lib" \
+              -type f \
+              -name "*.a" \
+              -exec cp -v {} "$RELEASE_DIR/lib/" \;
+          fi
+
+          echo "Copy shared libraries..."
+          find "$BUILD_DIR" \
+            -type f \
+            -name "*.so*" \
+            ! -path "*/CMakeFiles/*" \
+            ! -path "*/generators/*" \
+            -exec cp -v {} "$RELEASE_DIR/lib/" \;
+
+          echo "Copy headers..."
+          if [ -d include ]; then
+            cp -rv include/. "$RELEASE_DIR/include/"
+          fi
+
+          echo "Copy documentation..."
+          for file in README.md LICENSE CHANGELOG.md; do
+            if [ -f "$file" ]; then
+              cp -v "$file" "$RELEASE_DIR/"
+            fi
+          done
+
+          cat > "$RELEASE_DIR/BUILD_INFO.txt" << EOF
+          Version: ${{ steps.version.outputs.version }}
+          Build Number: ${{ steps.version.outputs.build_number }}
+          Build Tag: ${{ steps.version.outputs.release_tag }}
+          Commit: ${{ github.sha }}
+          Branch: ${{ github.ref_name }}
+          Build Time: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+          EOF
+
+          if ! find "$RELEASE_DIR/bin" -type f -executable -print -quit | grep -q .; then
+            echo "::error::No executable was added to the release package"
+            exit 1
+          fi
+
+          echo "Create archives..."
+          tar -czf "release-${ARTIFACT_VERSION}.tar.gz" \
+            -C "$RELEASE_DIR" .
+
+          (
+            cd "$RELEASE_DIR"
+            zip -rq "../release-${ARTIFACT_VERSION}.zip" .
+          )
+
+          echo "Release package contents:"
+          find "$RELEASE_DIR" -type f -print | sort
+
+          echo "Archive files:"
+          ls -lh \
+            "release-${ARTIFACT_VERSION}.tar.gz" \
+            "release-${ARTIFACT_VERSION}.zip"
+
+          echo "TAR archive contents:"
+          tar -tzf "release-${ARTIFACT_VERSION}.tar.gz" | head -20
+
+          echo "ZIP archive contents:"
+          unzip -l "release-${ARTIFACT_VERSION}.zip" | head -20
+
+      - name: Upload release artifacts
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        uses: actions/upload-artifact@v3
+        with:
+          name: cpp-release-${{ steps.version.outputs.artifact_version }}
+          path: |
+            release-*.tar.gz
+            release-*.zip
+          retention-days: 90
+
+      - name: Create GitHub Release
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.release_tag }}
+          name: Release ${{ steps.version.outputs.artifact_version }}
+          body: |
+            ## Release ${{ steps.version.outputs.version }} (Build ${{ steps.version.outputs.build_number }})
+
+            **Full Version**: `${{ steps.version.outputs.release_tag }}`
+            **Commit**: `${{ github.sha }}`
+            **Branch**: `${{ github.ref_name }}`
+            **Build Time**: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+
+            ### Build Artifacts
+            - `release-${{ steps.version.outputs.artifact_version }}.tar.gz`
+            - `release-${{ steps.version.outputs.artifact_version }}.zip`
+
+            ### Changes
+            - Source files updated
+            - All tests passing
+            - Release artifacts generated
+
+          files: |
+            release-*.tar.gz
+            release-*.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Notify deployment success
+        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+        run: |
+          echo "✅ Release built and deployed successfully"
+          echo "📦 Version: ${{ steps.version.outputs.version }}"
+          echo "🏗️ Build Number: ${{ steps.version.outputs.build_number }}"
+          echo "🏷️ Release Tag: ${{ steps.version.outputs.release_tag }}"
+          echo "📁 Artifact: release-${{ steps.version.outputs.artifact_version }}.{tar.gz,zip}"

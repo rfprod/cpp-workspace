@@ -52,14 +52,16 @@ Makefile
 install_manifest.txt
 compile_commands.json
 
+# Conan
+conaninfo.txt
+conanbuildinfo.cmake
+conan.lock
+
 # Temporary files
 *.tmp
 *.log
 *.bak
 *.swp
-
-# vcpkg
-vcpkg_installed/
 
 # debug information files
 *.dwo
@@ -67,3 +69,29 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# IDE directories
+.idea/
+.vs/
+.clion/
+.settings/
+.vscode/*
+!.vscode/settings.json
+!.vscode/recommended-settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# IDE user files
+*.user
+*.vcxproj.user
+CMakeUserPresets.json
+
+# OS-specific
+.DS_Store
+Thumbs.db
+.AppleDouble
+core
+
+# environment
+.env

@@ -1,0 +1,46 @@
+# For more information see:
+# - https://docs.github.com/en/actions/creating-actions/creating-a-composite-action
+# - https://docs.github.com/en/actions/creating-actions/metadata-syntax-for-github-actions#outputsoutput_id
+
+# The action can be referenced in workflows like:
+# - rfprod/cpp-workspace/.github/actions/workspace-cache@main
+# ./.github/actions/workspace-cache
+
+name: workspace-cache
+description: Configure and use workspace cache
+outputs:
+  os:
+    description: Runner os
+    value: ${{ runner.os }}
+  commitsha:
+    description: GitHub commit SHA
+    value: ${{ steps.get-variables.outputs.commitsha }}
+  compilerversion:
+    description: gcc version
+    value: ${{ steps.get-variables.outputs.compilerversion }}
+  cache-hit:
+    description: Workspace cache hit
+    value: ${{ steps.workspace-cache.outputs.cache-hit }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Get variables (commit hash, gcc version)
+      id: get-variables
+      shell: bash
+      run: |
+        echo "::set-output name=commitsha::$(echo ${GITHUB_SHA})";
+        echo "::set-output name=compilerversion::$(g++ --version | head -n1 | sed -r s/\\s/-/g)";
+
+    - name: Workspace cache
+      uses: actions/cache@v5
+      id: workspace-cache
+      with:
+        path: |
+          build/
+          ~/.conan2/
+        key: ${{ runner.os }}-cpp-${{ steps.get-variables.outputs.compilerversion }}-conan-${{ hashFiles('**/CMakeLists.txt', '**/conanfile.txt', '**/conanfile.py') }}-sha-${{ steps.get-variables.outputs.commitsha }}
+        restore-keys: |
+          ${{ runner.os }}-cpp-${{ steps.get-variables.outputs.compilerversion }}-conan-${{ hashFiles('**/CMakeLists.txt', '**/conanfile.txt', '**/conanfile.py') }}-sha-
+          ${{ runner.os }}-cpp-${{ steps.get-variables.outputs.compilerversion }}-conan-
+          ${{ runner.os }}-cpp-
