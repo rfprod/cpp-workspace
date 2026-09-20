@@ -264,7 +264,7 @@ jobs:
 
       - name: Upload release artifacts
         if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v7
         with:
           name: cpp-release-${{ steps.version.outputs.artifact_version }}
           path: |
@@ -274,7 +274,7 @@ jobs:
 
       - name: Create GitHub Release
         if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ steps.version.outputs.release_tag }}
           name: Release ${{ steps.version.outputs.artifact_version }}
