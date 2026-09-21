@@ -8,7 +8,7 @@ class AppConan(ConanFile):
     generators = "CMakeDeps", "CMakeToolchain"
 
     def requirements(self):
-        self.requires("fmt/11.2.0")  # Replace with your dependencies
+        self.requires("fmt/11.2.0")
 
     def layout(self):
         cmake_layout(self)
