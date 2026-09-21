@@ -3,6 +3,7 @@
     "ms-vscode.cpptools",
     "ms-vscode.cpptools-extension-pack",
     "ms-vscode.cpptools-themes",
+    "ms-vscode.cmake-tools",
     "sadesyllas.vscode-workspace-switcher",
     "editorconfig.editorconfig",
     "xaver.clang-format",

@@ -13,9 +13,6 @@ add_executable(cpp-workspace-app
     src/main.cpp
 )
 
-# Add find_package() and target_link_libraries() here
-# for each dependency installed by Conan.
-
 find_package(fmt CONFIG REQUIRED)
 target_link_libraries(cpp-workspace-app PRIVATE fmt::fmt)
 

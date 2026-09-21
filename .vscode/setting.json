@@ -1,4 +1,7 @@
 {
+  "[c]": {
+    "editor.defaultFormatter": "xaver.clang-format"
+  },
   "[cpp]": {
     "editor.defaultFormatter": "xaver.clang-format"
   },
@@ -38,5 +41,19 @@
     "CMAKE_BUILD_TYPE": "Debug",
     "CMAKE_C_COMPILER": "gcc-13",
     "CMAKE_CXX_COMPILER": "g++-13"
-  }
+  },
+  "clang-format.executable": "/usr/bin/clang-format",
+  "clang-format.fallbackStyle": "LLVM",
+  "clang-format.language.cpp.enable": true,
+  "clang-format.style": "file",
+  "files.defaultLanguage": "cpp",
+  "files.hotExit": "onExit",
+  "yaml.format.enable": true,
+  "yaml.format.singleQuote": true,
+  "yaml.format.bracketSpacing": true,
+  "yaml.format.proseWrap": true,
+  "yaml.format.printWidth": true,
+  "yaml.validate": true,
+  "yaml.hover": true,
+  "yaml.completion": true
 }
