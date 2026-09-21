@@ -95,6 +95,7 @@ jobs:
           pip install conan
           conan --version
           conan profile detect --force
+          deactivate
 
       - name: Install project dependencies
         if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
