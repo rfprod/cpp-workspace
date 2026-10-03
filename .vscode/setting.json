@@ -30,8 +30,7 @@
   "shellcheck.executablePath": "shellcheck",
   "shellcheck.ignorePatterns": {
     "**/.git/objects/**": true,
-    "**/.git/subtree-cache/**": true,
-    "**/node_modules/*/**": true
+    "**/.git/subtree-cache/**": true
   },
   "shellcheck.run": "onType",
   "shellcheck.useWorkspaceRootAsCwd": true,
@@ -46,6 +45,10 @@
   "clang-format.fallbackStyle": "LLVM",
   "clang-format.language.cpp.enable": true,
   "clang-format.style": "file",
+  "C_Cpp.default.cppStandard": "gnu++20",
+  "C_Cpp.default.cStandard": "gnu23",
+  "C_Cpp.default.compileCommands": "${workspaceFolder}/build/Release/compile_commands.json",
+  "C_Cpp.intelliSenseEngine": "Tag Parser",
   "files.defaultLanguage": "cpp",
   "files.hotExit": "onExit",
   "yaml.format.enable": true,

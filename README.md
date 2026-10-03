@@ -117,3 +117,23 @@ or
 ```bash
 cz c
 ```
+
+## FAQ
+
+### Manual build
+
+```bash
+rm -rf ./build/*
+conan install . --build=missing
+cmake --preset conan-release
+cmake --build --preset conan-release
+```
+
+or
+
+```bash
+rm -rf ./build/* ./CMakeUserPresets.json
+conan install . --build=missing
+cmake --preset conan-release
+cmake --build --preset conan-release
+```

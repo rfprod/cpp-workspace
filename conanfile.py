@@ -9,6 +9,8 @@ class AppConan(ConanFile):
 
     def requirements(self):
         self.requires("fmt/11.2.0")
+        self.requires("libcurl/8.5.0")
+        self.requires("nlohmann_json/3.11.2")
 
     def layout(self):
         cmake_layout(self)

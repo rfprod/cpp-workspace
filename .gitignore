@@ -95,3 +95,8 @@ core
 
 # environment
 .env
+
+# ignore all files except `*.cpp` and `*.hpp` in the source directory
+src/*
+!src/*.cpp
+!src/*.hpp
