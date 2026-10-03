@@ -144,7 +144,7 @@ jobs:
         if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
         id: version
         run: |
-          VERSION=$(grep -oP 'project\(\s*\w+\s+VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          VERSION=$(grep -oP 'project\(\s*[\w-]+\s+VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
 
           BUILD_NUMBER="$(date +%s)"
 
