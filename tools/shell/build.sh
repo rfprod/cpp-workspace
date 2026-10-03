@@ -88,7 +88,7 @@ log_error() {
 
 # Extract version from CMakeLists.txt
 get_version() {
-  grep -oP 'project\(\s*\w+\s+VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt 2>/dev/null || echo "0.0.0"
+  grep -oP 'project\(\s*[\w-]+\s+VERSION\s+\K[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt 2>/dev/null || echo "0.0.0"
 }
 
 # Main build script
@@ -133,7 +133,7 @@ main() {
   fi
 
   log_info "Building project..."
-  if cmake --build "$BUILD_DIR" --config "$BUILD_TYPE"; then
+  if cmake --build "$BUILD_DIR/$BUILD_TYPE" --config "$BUILD_TYPE"; then
     log_success "Build completed"
   else
     log_error "Build failed"
@@ -141,7 +141,7 @@ main() {
   fi
 
   log_info "Running tests..."
-  if ctest --test-dir "$BUILD_DIR" --output-on-failure; then
+  if ctest --test-dir "$BUILD_DIR/$BUILD_TYPE" --output-on-failure; then
     log_success "All tests passed"
   else
     log_warning "Some tests failed (continuing)"
@@ -150,9 +150,9 @@ main() {
   local BIN_NAME
   BIN_NAME=cpp-workspace-app
 
-  if [ -f "$BUILD_DIR/bin/$BIN_NAME" ]; then
+  if [ -f "$BUILD_DIR/$BUILD_TYPE/bin/$BIN_NAME" ]; then
     log_info "Running executable..."
-    "$BUILD_DIR/bin/$BIN_NAME"
+    "$BUILD_DIR/$BUILD_TYPE/bin/$BIN_NAME"
     log_success "Executable ran successfully"
   else
     log_warning "Executable not found at $BUILD_DIR/bin/$BIN_NAME"
@@ -179,8 +179,8 @@ EOF
     mkdir -p "$RELEASE_DIR"
 
     # Copy executable
-    if [ -f "$BUILD_DIR/bin/$BIN_NAME" ]; then
-      cp "$BUILD_DIR/bin/$BIN_NAME" "$RELEASE_DIR/"
+    if [ -f "$BUILD_DIR/$BUILD_TYPE/bin/$BIN_NAME" ]; then
+      cp "$BUILD_DIR/$BUILD_TYPE/bin/$BIN_NAME" "$RELEASE_DIR/"
     fi
 
     # Copy documentation
