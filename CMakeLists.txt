@@ -14,6 +14,7 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 add_executable(cpp-workspace-app
     src/main.cpp
     src/ollama_client.cpp
+    src/progress_spinner.cpp
 )
 
 find_package(fmt REQUIRED)

@@ -1,3 +1,4 @@
+#include "progress_spinner.hpp"
 #include <curl/curl.h>
 #include <iostream>
 
@@ -12,9 +13,13 @@ class OllamaClient {
     CURL* curl;
     std::string url;
     struct curl_slist* headers;
+    ProgressSpinner spinner{ProgressSpinner()};
 
     void check_ollama();
     void init_curl();
+
+    std::string trim_response(std::string response);
+
     void process_response(std::string response);
     void process_response_stream(std::string response);
 
