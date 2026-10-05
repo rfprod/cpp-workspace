@@ -1,8 +1,10 @@
 #include "ollama_client.hpp"
+#include <algorithm>
 #include <curl/curl.h>
 #include <iostream>
 #include <nlohmann/json.hpp>
 #include <sstream>
+#include <string>
 
 using nlohmann::json_abi_v3_11_2::json;
 
@@ -30,7 +32,7 @@ void OllamaClient::check_ollama() {
                         "https://docs.ollama.com/linux\n");
         exit(0);
     } else {
-        printf("[ok] Ollama binary exists.\n");
+        printf("✅ Ollama binary exists.\n");
     }
 };
 
@@ -41,15 +43,31 @@ void OllamaClient::init_curl() {
         fprintf(stderr, "Failed to initialize CURL.\n");
         exit(1);
     } else {
-        printf("[ok] CURL initialized.\n");
+        printf("✅ CURL initialized.\n");
     }
+}
+
+// Trims leading whitespace and trailing whitespace from a json response.
+std::string OllamaClient::trim_response(std::string response) {
+    response.erase(response.begin(),
+                   std::find_if(response.begin(), response.end(),
+                                [](unsigned char ch) { return !std::isspace(ch); }));
+
+    response.erase(std::find_if(response.rbegin(), response.rend(),
+                                [](unsigned char ch) { return !std::isspace(ch); })
+                       .base(),
+                   response.end());
+    return response;
 }
 
 // Process a response.
 void OllamaClient::process_response(std::string response) {
     try {
         json response_json = json::parse(response);
-        std::cout << "Response: " << response_json["response"].get<std::string>() << std::endl;
+
+        std::cout << "🦙 llama:\n"
+                  << this->trim_response(response_json["response"].get<std::string>()) << "\n---\n"
+                  << std::endl;
     } catch (const json::exception& err) {
         fprintf(stderr, "JSON parse error: %s\n", err.what());
     }
@@ -96,6 +114,9 @@ void OllamaClient::curl_request(OllamaPromptConfig config) {
     curl_easy_setopt(this->curl, CURLOPT_POSTFIELDS, post_data.c_str());
     curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, &response);
+
+    curl_easy_setopt(this->curl, CURLOPT_XFERINFOFUNCTION, ProgressSpinner::progress_callback);
+    curl_easy_setopt(this->curl, CURLOPT_NOPROGRESS, 0L);
 
     this->headers = curl_slist_append(this->headers, "Content-Type: application/json");
     curl_easy_setopt(this->curl, CURLOPT_HTTPHEADER, this->headers);
