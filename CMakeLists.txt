@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(cpp-workspace VERSION 1.0.0 LANGUAGES CXX)
+project(cpp-workspace VERSION 0.1.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -26,5 +26,3 @@ target_link_libraries(cpp-workspace-app
   CURL::libcurl
   nlohmann_json::nlohmann_json
 )
-
-# enable_testing()

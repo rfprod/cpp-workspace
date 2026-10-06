@@ -16,8 +16,16 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test-build-deploy:
+  test-build:
     runs-on: ubuntu-latest
+
+    outputs:
+      release: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      artifact_version: ${{ steps.version.outputs.artifact_version }}
+      version: ${{ steps.version.outputs.version }}
+      build_number: ${{ steps.version.outputs.build_number }}
+
 
     steps:
       - name: Checkout sources
@@ -271,25 +279,44 @@ jobs:
           path: |
             release-*.tar.gz
             release-*.zip
-          retention-days: 90
+          retention-days: 1
+
+  release:
+    needs: test-build
+    if: needs.test-build.outputs.release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v7
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          name: cpp-release-${{ needs.test-build.outputs.artifact_version }}
+          path: ./
+
+      - name: Get build timestamp
+        id: timestamp
+        run: echo "time=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> $GITHUB_OUTPUT
 
       - name: Create GitHub Release
-        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.version.outputs.release_tag }}
-          name: Release ${{ steps.version.outputs.artifact_version }}
+          tag_name: ${{ needs.test-build.outputs.release_tag }}
+          name: Release ${{ needs.test-build.outputs.artifact_version }}
           body: |
-            ## Release ${{ steps.version.outputs.version }} (Build ${{ steps.version.outputs.build_number }})
+            ## Release ${{ needs.test-build.outputs.version }} (Build ${{ needs.test-build.outputs.build_number }})
 
-            **Full Version**: `${{ steps.version.outputs.release_tag }}`
+            **Full Version**: `${{ needs.test-build.outputs.release_tag }}`
             **Commit**: `${{ github.sha }}`
             **Branch**: `${{ github.ref_name }}`
-            **Build Time**: $(date -u +'%Y-%m-%dT%H:%M:%SZ')
+            **Build Time**: ${{ steps.timestamp.outputs.time }}
 
             ### Build Artifacts
-            - `release-${{ steps.version.outputs.artifact_version }}.tar.gz`
-            - `release-${{ steps.version.outputs.artifact_version }}.zip`
+            - `release-${{ needs.test-build.outputs.artifact_version }}.tar.gz`
+            - `release-${{ needs.test-build.outputs.artifact_version }}.zip`
 
             ### Changes
             - Source files updated
@@ -301,14 +328,11 @@ jobs:
             release-*.zip
           draft: false
           prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Notify deployment success
-        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
         run: |
           echo "✅ Release built and deployed successfully"
-          echo "📦 Version: ${{ steps.version.outputs.version }}"
-          echo "🏗️ Build Number: ${{ steps.version.outputs.build_number }}"
-          echo "🏷️ Release Tag: ${{ steps.version.outputs.release_tag }}"
-          echo "📁 Artifact: release-${{ steps.version.outputs.artifact_version }}.{tar.gz,zip}"
+          echo "📦 Version: ${{ needs.test-build.outputs.version }}"
+          echo "🏗️ Build Number: ${{ needs.test-build.outputs.build_number }}"
+          echo "🏷️ Release Tag: ${{ needs.test-build.outputs.release_tag }}"
+          echo "📁 Artifact: release-${{ needs.test-build.outputs.artifact_version }}.{tar.gz,zip}"
