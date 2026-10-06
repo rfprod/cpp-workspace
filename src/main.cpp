@@ -30,12 +30,14 @@ int main(int argc, const char* argv[]) {
 
     OllamaClient client = OllamaClient();
 
+    client.query_model_list();
+
     struct OllamaPromptConfig config;
     config.model = model;
     config.prompt = prompt;
     config.stream = stream;
 
-    client.curl_request(config);
+    client.query_model(config);
 
     return 0;
 }

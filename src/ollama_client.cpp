@@ -15,12 +15,14 @@ static size_t WriteCallback(char* contents, size_t size, size_t nmemb, std::stri
 
 // Create an instance of OllamaClient.
 OllamaClient::OllamaClient() {
-    this->url = "http://localhost:11434/api/generate";
+    this->urls = {
+        generate_url : "http://localhost:11434/api/generate",
+        tags_url : "http://localhost:11434/api/tags"
+    };
     this->headers = nullptr;
+    this->curl = nullptr;
 
     this->check_ollama();
-
-    this->init_curl();
 
     printf("\n");
 }
@@ -70,6 +72,7 @@ void OllamaClient::process_response(std::string response) {
                   << std::endl;
     } catch (const json::exception& err) {
         fprintf(stderr, "JSON parse error: %s\n", err.what());
+        exit(1);
     }
 }
 
@@ -94,6 +97,7 @@ void OllamaClient::process_response_stream(std::string response) {
                 }
             } catch (const json::exception& err) {
                 fprintf(stderr, "JSON parse error: %s\n", err.what());
+                exit(1);
             }
         }
     }
@@ -101,8 +105,12 @@ void OllamaClient::process_response_stream(std::string response) {
     std::cout << std::endl;
 }
 
-// Send a request to the Ollama endpoint using CURL.
-void OllamaClient::curl_request(OllamaPromptConfig config) {
+// Send a request to the Ollama `generate` endpoint using CURL.
+void OllamaClient::query_model(OllamaPromptConfig config) {
+    this->init_curl();
+
+    printf("💬 prompt: %s\n", config.prompt.c_str());
+
     json request_payload = {
         {"model", config.model}, {"prompt", config.prompt}, {"stream", config.stream}};
 
@@ -110,7 +118,7 @@ void OllamaClient::curl_request(OllamaPromptConfig config) {
 
     std::string response;
 
-    curl_easy_setopt(this->curl, CURLOPT_URL, this->url.c_str());
+    curl_easy_setopt(this->curl, CURLOPT_URL, this->urls.generate_url.c_str());
     curl_easy_setopt(this->curl, CURLOPT_POSTFIELDS, post_data.c_str());
     curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, &response);
@@ -121,12 +129,21 @@ void OllamaClient::curl_request(OllamaPromptConfig config) {
     this->headers = curl_slist_append(this->headers, "Content-Type: application/json");
     curl_easy_setopt(this->curl, CURLOPT_HTTPHEADER, this->headers);
 
-    CURLcode res = curl_easy_perform(curl);
+    CURLcode result = curl_easy_perform(curl);
 
-    if (res != CURLE_OK) {
-        fprintf(stderr, "CURL error: %s\n", curl_easy_strerror(res));
-        curl_slist_free_all(this->headers);
-        curl_easy_cleanup(this->curl);
+    long status = 0;
+    curl_easy_getinfo(this->curl, CURLINFO_RESPONSE_CODE, &status);
+
+    curl_easy_cleanup(this->curl);
+    curl_slist_free_all(this->headers);
+    this->headers = nullptr;
+
+    if (result != CURLE_OK) {
+        fprintf(stderr, "CURL error: %s\n", curl_easy_strerror(result));
+        exit(1);
+    }
+    if (status != 200) {
+        fprintf(stderr, "Ollama returned HTTP status: %ld\n", status);
         exit(1);
     }
 
@@ -135,7 +152,65 @@ void OllamaClient::curl_request(OllamaPromptConfig config) {
     } else {
         this->process_response(response);
     }
+}
 
-    curl_slist_free_all(this->headers);
+// Send a request to the Ollama endpoint for listing local models using CURL.
+void OllamaClient::query_model_list() {
+    this->init_curl();
+
+    std::string response;
+
+    curl_easy_setopt(this->curl, CURLOPT_URL, this->urls.tags_url.c_str());
+    curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, &response);
+
+    curl_easy_setopt(this->curl, CURLOPT_XFERINFOFUNCTION, ProgressSpinner::progress_callback);
+    curl_easy_setopt(this->curl, CURLOPT_NOPROGRESS, 0L);
+
+    this->headers = curl_slist_append(this->headers, "Content-Type: application/json");
+    curl_easy_setopt(this->curl, CURLOPT_HTTPHEADER, this->headers);
+
+    CURLcode result = curl_easy_perform(this->curl);
+
+    long status = 0;
+    curl_easy_getinfo(this->curl, CURLINFO_RESPONSE_CODE, &status);
+
     curl_easy_cleanup(this->curl);
+    curl_slist_free_all(this->headers);
+    this->headers = nullptr;
+
+    if (result != CURLE_OK) {
+        fprintf(stderr, "CURL error: %s\n", curl_easy_strerror(result));
+        exit(1);
+    }
+    if (status != 200) {
+        fprintf(stderr, "Ollama returned HTTP status: %ld\n", status);
+        exit(1);
+    }
+
+    try {
+        const json data = json::parse(response);
+
+        if (!data.contains("models") || !data["models"].is_array()) {
+            fprintf(stderr, "Response has no models array.\n");
+            exit(1);
+        }
+
+        printf("📃 available models:\n");
+
+        for (const auto& model : data["models"]) {
+            const std::string name = model.value("name", "unknown");
+            const std::string modified_at = model.value("modified_at", "unknown");
+            const std::string size =
+                model.contains("size")
+                    ? std::to_string(model["size"].get<long long>() / 1024 / 1024) + " Mb"
+                    : "size unknown";
+
+            std::cout << modified_at << "\t (" << size << ") \t" << name << "\n";
+        }
+        printf("\n");
+    } catch (const json::exception& err) {
+        fprintf(stderr, "JSON parse error: %s\n", err.what());
+        exit(1);
+    }
 }
