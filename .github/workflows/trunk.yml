@@ -105,13 +105,7 @@ jobs:
 
       - name: Check formatting
         if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
-        run: |
-          find src -name "*.cpp" -o -name "*.hpp" | xargs clang-format --dry-run -Werror
-
-      - name: Lint sources (cppcheck)
-        if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
-        run: |
-          cppcheck --enable=all --error-exitcode=1 --suppress=missingIncludeSystem src/
+        run: bash ./tools/shell/format.sh
 
       - name: Lint sources (clang-tidy)
         if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}

@@ -8,10 +8,15 @@ struct OllamaPromptConfig {
     bool stream;
 };
 
+struct OllamaServerURLs {
+    std::string generate_url;
+    std::string tags_url;
+};
+
 class OllamaClient {
   private:
     CURL* curl;
-    std::string url;
+    OllamaServerURLs urls;
     struct curl_slist* headers;
     ProgressSpinner spinner{ProgressSpinner()};
 
@@ -26,5 +31,6 @@ class OllamaClient {
   public:
     OllamaClient();
 
-    void curl_request(OllamaPromptConfig config);
+    void query_model(OllamaPromptConfig config);
+    void query_model_list();
 };
