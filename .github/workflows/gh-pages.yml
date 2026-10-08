@@ -1,0 +1,93 @@
+name: gh-pages
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install Doxygen and Graphviz
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends doxygen graphviz
+
+      - name: Build documentation
+        run: |
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install -U pip
+          pip install -r docs/requirements.txt
+
+          mkdir -p build
+          cat > build/Doxyfile <<'EOF'
+          PROJECT_NAME           = cpp-workspace
+          OUTPUT_DIRECTORY       = build/doxygen
+          INPUT                  = src
+          RECURSIVE              = YES
+          FILE_PATTERNS          = *.h *.hh *.hpp *.hxx *.c *.cc *.cpp *.cxx
+          EXCLUDE_PATTERNS       = */build/* */.git/*
+          EXTRACT_ALL            = YES
+          GENERATE_HTML          = NO
+          GENERATE_XML           = YES
+          WARN_IF_UNDOCUMENTED   = NO
+          QUIET                  = YES
+          EOF
+
+          doxygen build/Doxyfile
+          sphinx-build -b html docs build/site
+          deactivate
+
+      - name: Upload downloadable site artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: cpp-docs-site
+          path: build/site/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Configure GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/configure-pages@v6
+
+      - name: Upload GitHub Pages artifact
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: build/site/
+
+  deploy:
+    if: github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
