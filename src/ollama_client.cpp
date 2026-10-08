@@ -19,8 +19,8 @@ OllamaClient::OllamaClient() {
         generate_url : "http://localhost:11434/api/generate",
         tags_url : "http://localhost:11434/api/tags"
     };
-    this->headers = nullptr;
     this->curl = nullptr;
+    this->headers = nullptr;
 
     this->check_ollama();
 
@@ -118,10 +118,13 @@ void OllamaClient::query_model(OllamaPromptConfig config) {
 
     std::string response;
 
+    char error_buffer[CURL_ERROR_SIZE];
+
     curl_easy_setopt(this->curl, CURLOPT_URL, this->urls.generate_url.c_str());
     curl_easy_setopt(this->curl, CURLOPT_POSTFIELDS, post_data.c_str());
     curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(this->curl, CURLOPT_ERRORBUFFER, error_buffer);
 
     curl_easy_setopt(this->curl, CURLOPT_XFERINFOFUNCTION, ProgressSpinner::progress_callback);
     curl_easy_setopt(this->curl, CURLOPT_NOPROGRESS, 0L);
@@ -140,6 +143,9 @@ void OllamaClient::query_model(OllamaPromptConfig config) {
 
     if (result != CURLE_OK) {
         fprintf(stderr, "CURL error: %s\n", curl_easy_strerror(result));
+        if (error_buffer[0] != '\0') {
+            fprintf(stderr, "Details: %s\n", error_buffer);
+        }
         exit(1);
     }
     if (status != 200) {
@@ -160,9 +166,12 @@ void OllamaClient::query_model_list() {
 
     std::string response;
 
+    char error_buffer[CURL_ERROR_SIZE];
+
     curl_easy_setopt(this->curl, CURLOPT_URL, this->urls.tags_url.c_str());
     curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, WriteCallback);
     curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, &response);
+    curl_easy_setopt(this->curl, CURLOPT_ERRORBUFFER, error_buffer);
 
     curl_easy_setopt(this->curl, CURLOPT_XFERINFOFUNCTION, ProgressSpinner::progress_callback);
     curl_easy_setopt(this->curl, CURLOPT_NOPROGRESS, 0L);
@@ -181,6 +190,9 @@ void OllamaClient::query_model_list() {
 
     if (result != CURLE_OK) {
         fprintf(stderr, "CURL error: %s\n", curl_easy_strerror(result));
+        if (error_buffer[0] != '\0') {
+            fprintf(stderr, "Details: %s\n", error_buffer);
+        }
         exit(1);
     }
     if (status != 200) {
