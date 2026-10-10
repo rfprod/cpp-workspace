@@ -1,20 +1,7 @@
 #include "ollama_client.hpp"
+#include "user-interface.hpp"
 #include <iostream>
-
-bool next_prompt(std::string* prompt) {
-    bool done = false;
-    printf("⏳ Type your prompt (q/Q to quit): ");
-    if (!std::getline(std::cin, *prompt, '\n')) {
-        fprintf(stderr, "Error reading user input.\n");
-        exit(1);
-    }
-
-    if (*prompt == "q" || *prompt == "Q") {
-        done = true;
-    }
-
-    return done;
-}
+#include <unistd.h>
 
 int main(int argc, const char* argv[]) {
     std::string model = "gemma3n:latest";
@@ -38,25 +25,32 @@ int main(int argc, const char* argv[]) {
         }
     }
 
-    printf("\n");
-    printf("🛈 model = %s\n", model.c_str());
-    printf("🛈 prompt = %s\n", prompt.c_str());
-    printf("🛈 stream = %s\n", stream ? "true" : "false");
-    printf("🛈 interactive = %s\n", interactive ? "true" : "false");
-    printf("\n");
-
+    UserInterface ui = UserInterface();
     if (interactive == true) {
+        printf("\nInteractive mode debug info.\n");
+        printf("---\n");
+        printf("isatty(0)=%d, isatty(1)=%d, isatty(2)=%d\n", isatty(0), isatty(1), isatty(2));
+        printf("TERM=%s\n", getenv("TERM"));
+        printf("TERMINFO=%s\n", getenv("TERMINFO") ? getenv("TERMINFO") : "(not set)");
+        printf("LC_ALL=%s\n", getenv("LC_ALL") ? getenv("LC_ALL") : "(not set)");
+        printf("LANG=%s\n", getenv("LANG") ? getenv("LANG") : "(not set)");
+        printf("---\n");
+
+        ui.run();
+        ui.print_args(model, prompt, stream, interactive);
+
         while (prompt.length() == 0) {
-            done = next_prompt(&prompt);
+            done = ui.next_prompt(&prompt);
 
             if (done == true) {
-                printf("\n🏁 The session has ended.\n");
-                exit(0);
+                ui.end_session(EXIT_SUCCESS);
             }
         }
     } else {
+        UserInterface::print_args_noninteractive(model, prompt, stream, interactive);
+
         if (prompt.length() == 0) {
-            done = next_prompt(&prompt);
+            done = UserInterface::next_prompt_noninteractive(&prompt);
 
             if (prompt.length() == 0) {
                 printf("\n🏁 Empty prompt. The session has ended.\n");
@@ -70,7 +64,7 @@ int main(int argc, const char* argv[]) {
         }
     }
 
-    OllamaClient client = OllamaClient();
+    OllamaClient client = OllamaClient(&ui);
 
     client.query_model_list();
 
@@ -83,17 +77,19 @@ int main(int argc, const char* argv[]) {
 
     if (interactive == true) {
         while (done == false) {
-            done = next_prompt(&prompt);
+            done = ui.next_prompt(&prompt);
             if (done == true) {
                 continue;
             }
 
             config.prompt = prompt;
             client.query_model(config);
+            ui.request_redraw();
         }
+        ui.end_session(EXIT_SUCCESS);
+    } else {
+        printf("\n🏁 The session has ended.\n");
     }
-
-    printf("\n🏁 The session has ended.\n");
 
     return 0;
 }

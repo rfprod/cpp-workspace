@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(cpp-workspace VERSION 0.1.1 LANGUAGES CXX)
+project(cpp-workspace VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -15,14 +15,18 @@ add_executable(cpp-workspace-app
     src/main.cpp
     src/ollama_client.cpp
     src/progress_spinner.cpp
+    src/user-interface.cpp
+    src/text-utils.cpp
 )
 
 find_package(fmt REQUIRED)
 find_package(CURL REQUIRED)
 find_package(nlohmann_json REQUIRED)
+find_package(Curses REQUIRED)
 target_link_libraries(cpp-workspace-app
   PRIVATE
   fmt::fmt
   CURL::libcurl
   nlohmann_json::nlohmann_json
+  Curses::Curses
 )
