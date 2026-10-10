@@ -50,10 +50,22 @@ jobs:
           GENERATE_XML           = YES
           WARN_IF_UNDOCUMENTED   = NO
           QUIET                  = YES
+          HAVE_DOT               = YES
+          DOT_IMAGE_FORMAT       = svg
+          INTERACTIVE_SVG        = YES
+          CLASS_GRAPH            = YES
+          COLLABORATION_GRAPH    = YES
+          INCLUDE_GRAPH          = YES
+          INCLUDED_BY_GRAPH      = YES
+          UML_LOOK               = YES
+
           EOF
 
           doxygen build/Doxyfile
           sphinx-build -b html docs build/site
+          # Copy Doxygen HTML with diagrams into the Sphinx site
+          cp -r build/doxygen/html/* build/site/api/ || true
+
           deactivate
 
       - name: Upload downloadable site artifact
