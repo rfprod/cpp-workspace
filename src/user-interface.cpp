@@ -252,6 +252,9 @@ bool UserInterface::next_prompt_noninteractive(std::string* prompt) {
     return done;
 }
 
+/**
+ * Prints a message using ncurses.
+ */
 void UserInterface::print(const std::string& text, int type) {
     {
         std::lock_guard<std::mutex> lock(this->ui_mutex);
@@ -260,16 +263,33 @@ void UserInterface::print(const std::string& text, int type) {
     this->request_redraw();
 }
 
+/**
+ * Prints an error message using ncurses.
+ */
 void UserInterface::print_error(const std::string& text) {
     this->print(text, UserInterface::MESSAGE_TYPE_ERROR);
 }
 
+/**
+ * Prints a success message using ncurses.
+ */
 void UserInterface::print_success(const std::string& text) {
     this->print(text, UserInterface::MESSAGE_TYPE_SUCCESS);
 }
 
+/**
+ * Prints a normal message using ncurses.
+ */
 void UserInterface::print_message(const std::string& text) {
     this->print(text, UserInterface::MESSAGE_TYPE_NORMAL);
+}
+
+/**
+ * Prints a message using `std::cout`.
+ */
+void UserInterface::print_message_noninteractive(const std::string& text) {
+    std::cout << text;
+    std::cout.flush();
 }
 
 void UserInterface::draw_output_area() {

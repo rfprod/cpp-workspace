@@ -64,9 +64,10 @@ OllamaClient::OllamaClient(UserInterface* ui) {
  * Output is routed through the UserInterface (if available) or stdout/stderr.
  */
 void OllamaClient::check_ollama() {
+    std::string message{};
     if (system("which ollama > /dev/null 2>&1")) {
-        std::string message = "Ollama binary does not exist.\nInstallation instructions: "
-                              "https://docs.ollama.com/linux\n";
+        message = "Ollama binary does not exist.\nInstallation instructions: "
+                  "https://docs.ollama.com/linux\n";
         if (this->ui->is_running() == false) {
             fprintf(stderr, "❌ %s", message.c_str());
             exit(0);
@@ -75,7 +76,7 @@ void OllamaClient::check_ollama() {
             this->ui->end_session(EXIT_FAILURE);
         }
     } else {
-        std::string message = "Ollama binary exists.\n";
+        message = "Ollama binary exists.\n";
         if (this->ui->is_running() == false) {
             printf("✅ %s", message.c_str());
         } else {
@@ -92,8 +93,9 @@ void OllamaClient::check_ollama() {
  */
 void OllamaClient::init_curl() {
     this->curl = curl_easy_init();
+    std::string message{};
     if (!this->curl) {
-        std::string message = "Failed to initialize CURL.\n";
+        message = "Failed to initialize CURL.\n";
         if (this->ui->is_running() == false) {
             fprintf(stderr, "❌ %s", message.c_str());
             exit(1);
@@ -102,7 +104,7 @@ void OllamaClient::init_curl() {
             this->ui->end_session(EXIT_FAILURE);
         }
     } else {
-        std::string message = "CURL initialized.\n";
+        message = "CURL initialized.\n";
         if (this->ui->is_running() == false) {
             printf("✅ %s", message.c_str());
         } else {
@@ -203,16 +205,30 @@ void OllamaClient::process_response_stream(std::string response) {
     std::istringstream stream(response);
     std::string line;
 
-    std::cout << "Response: ";
-    std::cout.flush();
+    std::string accumulated{};
+
+    std::string text = "🦙 llama:\n";
+    if (this->ui->is_running() == false) {
+        this->ui->print_message_noninteractive(text);
+    } else {
+        accumulated += text;
+    }
 
     while (std::getline(stream, line)) {
         if (!line.empty()) {
             try {
                 json chunk = json::parse(line);
-                std::string text = chunk["response"].get<std::string>();
-                std::cout << text;
-                std::cout.flush();
+                text = chunk["response"].get<std::string>();
+                if (this->ui->is_running() == false) {
+                    this->ui->print_message_noninteractive(text);
+                } else {
+                    accumulated += text;
+
+                    if (text.find('\n') != std::string::npos || accumulated.length() > 256) {
+                        this->ui->print_message(accumulated);
+                        accumulated.clear();
+                    }
+                }
 
                 if (chunk["done"].get<bool>()) {
                     break;
@@ -230,7 +246,12 @@ void OllamaClient::process_response_stream(std::string response) {
         }
     }
 
-    std::cout << std::endl;
+    text = "\n---\n";
+    if (this->ui->is_running() == false) {
+        this->ui->print_message_noninteractive(text);
+    } else {
+        this->ui->print_message(text);
+    }
 }
 
 /**
