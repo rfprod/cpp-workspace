@@ -8,6 +8,7 @@ int main(int argc, const char* argv[]) {
     std::string prompt = "Hey! What's up!";
     bool stream = false;
     bool interactive = false;
+    bool dark_theme = true;
 
     bool done = false;
 
@@ -22,10 +23,12 @@ int main(int argc, const char* argv[]) {
             stream = arg.substr(9) == "true" ? true : false;
         } else if (arg.starts_with("--interactive=") == true) {
             interactive = arg.substr(14) == "true" ? true : false;
+        } else if (arg.starts_with("--dark_theme=") == true) {
+            dark_theme = arg.substr(13) == "true" ? true : false;
         }
     }
 
-    UserInterface ui = UserInterface();
+    UserInterface ui(dark_theme);
     if (interactive == true) {
         printf("\nInteractive mode debug info.\n");
         printf("---\n");
@@ -37,7 +40,7 @@ int main(int argc, const char* argv[]) {
         printf("---\n");
 
         ui.run();
-        ui.print_args(model, prompt, stream, interactive);
+        ui.print_args(model, prompt, stream, interactive, dark_theme);
 
         while (prompt.length() == 0) {
             done = ui.next_prompt(&prompt);
@@ -47,7 +50,7 @@ int main(int argc, const char* argv[]) {
             }
         }
     } else {
-        UserInterface::print_args_noninteractive(model, prompt, stream, interactive);
+        UserInterface::print_args_noninteractive(model, prompt, stream, interactive, dark_theme);
 
         if (prompt.length() == 0) {
             done = UserInterface::next_prompt_noninteractive(&prompt);
