@@ -10,8 +10,47 @@
 
 UserInterface* UserInterface::instance = nullptr;
 
-constexpr int COLOR_PAIR_DEFAULT = 1;
-constexpr int COLOR_PAIR_INVERT = 2;
+enum ColorPair {
+    DEFAULT_PAIR = 1,
+    HIGHLIGHT_PAIR = 2,
+    SUCCESS_PAIR = 3,
+    WARNING_PAIR = 4,
+    ERROR_PAIR = 5,
+    INFO_PAIR = 6,
+    MUTED_PAIR = 7,
+    ACCENT_PAIR = 8,
+    FOCUS_PAIR = 9
+};
+
+void UserInterface::init_dark_theme(void) {
+    start_color();
+    use_default_colors();
+
+    // Purpose | Foreground | Background
+    init_pair(DEFAULT_PAIR, COLOR_WHITE, -1);
+    init_pair(HIGHLIGHT_PAIR, COLOR_BLACK, COLOR_WHITE);
+    init_pair(SUCCESS_PAIR, COLOR_GREEN, -1);
+    init_pair(WARNING_PAIR, COLOR_YELLOW, -1);
+    init_pair(ERROR_PAIR, COLOR_RED, -1);
+    init_pair(INFO_PAIR, COLOR_CYAN, -1);
+    init_pair(ACCENT_PAIR, COLOR_MAGENTA, -1);
+    init_pair(FOCUS_PAIR, COLOR_WHITE, COLOR_BLUE);
+}
+
+void UserInterface::init_light_theme(void) {
+    start_color();
+    use_default_colors();
+
+    // Purpose | Foreground | Background
+    init_pair(DEFAULT_PAIR, COLOR_BLACK, COLOR_WHITE);
+    init_pair(HIGHLIGHT_PAIR, COLOR_WHITE, COLOR_BLACK);
+    init_pair(SUCCESS_PAIR, COLOR_GREEN, COLOR_WHITE);
+    init_pair(WARNING_PAIR, COLOR_YELLOW, COLOR_WHITE);
+    init_pair(ERROR_PAIR, COLOR_RED, COLOR_WHITE);
+    init_pair(INFO_PAIR, COLOR_BLUE, COLOR_WHITE);
+    init_pair(ACCENT_PAIR, COLOR_MAGENTA, COLOR_WHITE);
+    init_pair(FOCUS_PAIR, COLOR_BLACK, COLOR_CYAN);
+}
 
 void UserInterface::init_ncurses(void) {
     // Set up locale for UTF-8 support.
@@ -53,10 +92,14 @@ void UserInterface::init_ncurses(void) {
     }
 
     if (has_colors()) {
-        start_color();
-        init_pair(COLOR_PAIR_DEFAULT, COLOR_WHITE, COLOR_BLACK);
-        init_pair(COLOR_PAIR_INVERT, COLOR_BLACK, COLOR_WHITE);
-        bkgd(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+        printf("DEBUG: Checking theme - use_dark_theme = %s\n",
+               this->use_dark_theme ? "true" : "false");
+        if (this->use_dark_theme == true) {
+            this->init_dark_theme();
+        } else {
+            this->init_light_theme();
+        }
+        bkgd(COLOR_PAIR(DEFAULT_PAIR));
     }
 
     signal(SIGWINCH, UserInterface::handle_resize);
@@ -132,7 +175,15 @@ void UserInterface::draw_input_area() {
     mvprintw(layout.input_y, layout.input_x + 37, "%s", input_buffer.c_str());
 }
 
-UserInterface::UserInterface() : resize_flag(0), running(0), input_cursor_x(0), layout({}) {
+UserInterface::UserInterface()
+    : resize_flag(0), running(0), input_cursor_x(0), layout({}), use_dark_theme(true) {
+    printf("DEBUG: use_dark_theme = %s\n", this->use_dark_theme ? "true" : "false");
+    UserInterface::instance = this;
+}
+
+UserInterface::UserInterface(bool dark_theme)
+    : resize_flag(0), running(0), input_cursor_x(0), layout({}), use_dark_theme(dark_theme) {
+    printf("DEBUG: use_dark_theme = %s\n", this->use_dark_theme ? "true" : "false");
     UserInterface::instance = this;
 }
 
@@ -184,23 +235,25 @@ void UserInterface::end_session(int exit_code) {
 }
 
 void UserInterface::print_args(const std::string& model, const std::string& prompt, bool stream,
-                               bool interactive) {
+                               bool interactive, bool dark_theme) {
     std::string buffer;
     buffer += "🛈 model = " + model + "\n";
     buffer += "🛈 prompt = " + prompt + "\n";
     buffer += "🛈 stream = " + std::string(stream ? "true" : "false") + "\n";
     buffer += "🛈 interactive = " + std::string(interactive ? "true" : "false") + "\n";
+    buffer += "🛈 dark_theme = " + std::string(dark_theme ? "true" : "false") + "\n";
 
     this->print(buffer, UserInterface::MESSAGE_TYPE_NORMAL);
 }
 
 void UserInterface::print_args_noninteractive(const std::string& model, const std::string& prompt,
-                                              bool stream, bool interactive) {
+                                              bool stream, bool interactive, bool dark_theme) {
     printf("\n");
     printf("🛈 model = %s\n", model.c_str());
     printf("🛈 prompt = %s\n", prompt.c_str());
     printf("🛈 stream = %s\n", stream ? "true" : "false");
     printf("🛈 interactive = %s\n", interactive ? "true" : "false");
+    printf("🛈 dark_theme = %s\n", dark_theme ? "true" : "false");
     printf("\n");
 }
 
@@ -325,9 +378,9 @@ void UserInterface::draw_output_area() {
                 break;
 
             if (type == UserInterface::MESSAGE_TYPE_ERROR) {
-                wattron(stdscr, COLOR_PAIR(COLOR_PAIR_INVERT) | A_BOLD);
+                wattron(stdscr, COLOR_PAIR(ERROR_PAIR) | A_BOLD);
                 mvprintw(current_line, 2, "❌ %s", line_it->c_str());
-                wattroff(stdscr, COLOR_PAIR(COLOR_PAIR_INVERT) | A_BOLD);
+                wattroff(stdscr, COLOR_PAIR(ERROR_PAIR) | A_BOLD);
             } else if (type == UserInterface::MESSAGE_TYPE_SUCCESS) {
                 wattron(stdscr, A_BOLD);
                 mvprintw(current_line, 2, "✅ %s", line_it->c_str());
@@ -435,7 +488,7 @@ void UserInterface::draw_spinner() {
     int frame = this->spinner_frame.load();
     int progress = this->progress_percent.load();
 
-    attron(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+    attron(COLOR_PAIR(DEFAULT_PAIR));
 
     if (progress > 0) {
         mvprintw(this->layout.spinner_y, this->layout.spinner_x, "%c Progress: %d%%",
@@ -445,5 +498,5 @@ void UserInterface::draw_spinner() {
                  spinner_chars[frame]);
     }
 
-    attroff(COLOR_PAIR(COLOR_PAIR_DEFAULT));
+    attroff(COLOR_PAIR(DEFAULT_PAIR));
 }

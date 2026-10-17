@@ -55,7 +55,20 @@ class UserInterface {
     std::atomic<int> spinner_frame{0};
     std::atomic<int> progress_percent{0};
 
+    // Color theme configuration.
+    bool use_dark_theme = true;
+
     // Initialization methods.
+
+    /**
+     * Initializes the color pairs for the UI dark theme.
+     */
+    void init_dark_theme(void);
+
+    /**
+     * Initializes the color pairs for the UI light theme.
+     */
+    void init_light_theme(void);
 
     /**
      * Initializes the ncurses library for terminal UI rendering.
@@ -146,6 +159,13 @@ class UserInterface {
      * but does NOT start the render thread (that happens in run()).
      */
     UserInterface();
+    /**
+     * Constructor: Initializes the UserInterface object.
+     * Sets up initial state, layout, and registers signal handlers
+     * but does NOT start the render thread (that happens in run()).
+     * @param dark_theme Whether to active the dark theme.
+     */
+    explicit UserInterface(bool dark_theme);
 
     /**
      * Destructor: Cleans up resources.
@@ -197,9 +217,10 @@ class UserInterface {
      * @param prompt The initial prompt text.
      * @param stream Whether streaming is enabled.
      * @param interactive Whether interactive mode is enabled.
+     * @param dark_theme Whether to active the dark theme.
      */
     void print_args(const std::string& model, const std::string& prompt, bool stream,
-                    bool interactive);
+                    bool interactive, bool dark_theme);
     /**
      * Static version of print_args() for non-interactive mode.
      * Outputs arguments to stdout instead of the UI.
@@ -207,9 +228,10 @@ class UserInterface {
      * @param prompt The initial prompt text.
      * @param stream Whether streaming is enabled.
      * @param interactive Whether interactive mode is enabled.
+     * @param dark_theme Whether to active the dark theme.
      */
     static void print_args_noninteractive(const std::string& model, const std::string& prompt,
-                                          bool stream, bool interactive);
+                                          bool stream, bool interactive, bool dark_theme);
 
     /**
      * Waits for and retrieves the next user input prompt (interactive mode).
