@@ -100,3 +100,6 @@ core
 src/*
 !src/*.cpp
 !src/*.hpp
+!src/**
+!src/**/*.cpp
+!src/**/*.hpp

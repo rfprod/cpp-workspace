@@ -1,5 +1,5 @@
-#include "ollama_client.hpp"
-#include "user-interface.hpp"
+#include "interface/user-interface.hpp"
+#include "ollama/ollama_client.hpp"
 #include <iostream>
 #include <unistd.h>
 
@@ -69,7 +69,26 @@ int main(int argc, const char* argv[]) {
 
     OllamaClient client = OllamaClient(&ui);
 
-    client.query_model_list();
+    std::vector<std::string> models = client.query_model_list();
+    bool force_model_selection = true;
+    for (size_t i = 0; i < models.size(); i += 1) {
+        if (models[i] == model) {
+            force_model_selection = false;
+        }
+    }
+
+    if (force_model_selection == true) {
+        if (interactive == true) {
+            ui.print_model_list(models);
+            ui.select_model(models, &model);
+            ui.print_args(model, prompt, stream, interactive, dark_theme);
+        } else {
+            UserInterface::print_model_list_noninteractive(models);
+            UserInterface::select_model_noninteractive(models, &model);
+            UserInterface::print_args_noninteractive(model, prompt, stream, interactive,
+                                                     dark_theme);
+        }
+    }
 
     struct OllamaPromptConfig config;
     config.model = model;

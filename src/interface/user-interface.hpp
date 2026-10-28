@@ -1,6 +1,6 @@
 #pragma once
 
-#include "text-utils.hpp"
+#include "utils/text-utils.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <functional>
@@ -221,6 +221,7 @@ class UserInterface {
      */
     void print_args(const std::string& model, const std::string& prompt, bool stream,
                     bool interactive, bool dark_theme);
+
     /**
      * Static version of print_args() for non-interactive mode.
      * Outputs arguments to stdout instead of the UI.
@@ -232,6 +233,33 @@ class UserInterface {
      */
     static void print_args_noninteractive(const std::string& model, const std::string& prompt,
                                           bool stream, bool interactive, bool dark_theme);
+
+    /**
+     * Prints available models and their corresponding indexes for selection.
+     * @param models The list of available local models.
+     */
+    void print_model_list(const std::vector<std::string>& models);
+
+    /**
+     * Static version of print_model_list() for non-interactive mode.
+     * @param models The list of available local models.
+     */
+    static void print_model_list_noninteractive(const std::vector<std::string>& models);
+
+    /**
+     * Prompts for user input to select a model form the list of available local models.
+     * @param models The list of available local models.
+     * @param model Pointer to a std::string to receive the user input.
+     */
+    void select_model(const std::vector<std::string>& models, std::string* model);
+
+    /**
+     * Static version of the select_model() for non-interactive mode.
+     * @param models The list of available local models.
+     * @param model Pointer to a std::string to receive the user input.
+     */
+    static void select_model_noninteractive(const std::vector<std::string>& models,
+                                            std::string* model);
 
     /**
      * Waits for and retrieves the next user input prompt (interactive mode).
