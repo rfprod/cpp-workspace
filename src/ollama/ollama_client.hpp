@@ -1,7 +1,9 @@
 #pragma once
 
 #include "interface/progress_spinner.hpp"
-#include "interface/user-interface.hpp"
+#include "interface/user_interface.hpp"
+#include "utils/curl_utils.hpp"
+#include "utils/system_utils.hpp"
 #include <curl/curl.h>
 #include <iostream>
 #include <optional>
@@ -13,8 +15,9 @@
  * @param prompt The text prompt to send to the model.
  * @param stream Whether to stream the response (true) or receive it all at once (false).
  */
-struct OllamaPromptConfig {
+struct OllamaClientConfig {
     std::string model;
+    std::string embedding_model;
     std::string prompt;
     bool stream;
 };
@@ -24,207 +27,72 @@ struct OllamaPromptConfig {
  *
  * @param generate_url The endpoint for querying a model.
  * @param tags_url The endpoint for listing available models.
+ * @param embed_url The endpoint for creating embeddings.
  */
 struct OllamaServerURLs {
     std::string generate_url;
     std::string tags_url;
+    std::string embed_url;
 };
 
 /**
- * Client for communicating with a local Ollama instance.
+ * Client for interacting with the Ollama API server.
  *
- * OllamaClient manages HTTP requests to Ollama's REST API, handling both
- * model queries and model listing. It integrates with a UserInterface for
- * displaying messages and errors, and uses ProgressSpinner to provide
- * visual feedback during network operations.
+ * Manages communication with an Ollama server instance, providing functionality
+ * to query language models, retrieve available models, and generate embeddings.
+ * Encapsulates HTTP communication via CURL, response parsing, and dual-mode
+ * output (console or interactive UI) based on the running state of the user
+ * interface. Validates server connectivity on initialization and handles errors
+ * with appropriate logging to either stderr or the UI.
  *
- * The client verifies that the Ollama binary is installed on the system
- * and initializes CURL for HTTP communication. All responses are parsed
- * as JSON and formatted for display.
- *
- * @note Designed for local Ollama instances running on localhost:11434.
- *
- * @example Query a model:
- * @code
- * UserInterface ui;
- * OllamaClient client(&ui);
- *
- * OllamaPromptConfig config{
- *     .model = "llama2",
- *     .prompt = "What is machine learning?",
- *     .stream = false
- * };
- * client.query_model(config);
- * @endcode
- *
- * @example List available models:
- * @code
- * UserInterface ui;
- * OllamaClient client(&ui);
- * client.query_model_list();
- * @endcode
+ * The client uses pre-configured API endpoint URLs and delegates HTTP operations
+ * to a CURL wrapper utility. Responses from the server are processed and
+ * displayed to the user through the provided UI interface.
  */
 class OllamaClient {
   private:
-    /**
-     * CURL handle for HTTP requests. Initialized in init_curl().
-     */
-    CURL* curl;
-
     /**
      * API endpoint URLs for the Ollama server.
      */
     OllamaServerURLs urls;
 
     /**
-     * CURL headers list for HTTP requests (Content-Type, etc.).
-     * Allocated in query methods and freed after each request.
+     * Pointer to the Ollama Client configuraion.
      */
-    struct curl_slist* headers;
+    OllamaClientConfig* config;
 
     /**
      * Pointer to the UserInterface for displaying messages and errors.
-     * Used for both CLI and interactive UI output.
      */
     UserInterface* ui;
 
     /**
-     * Progress spinner for visual feedback during network operations.
-     * Managed via std::unique_ptr for automatic cleanup.
+     * Pointer to the CURL wrapper containing pre-configured internal logic.
      */
-    std::unique_ptr<ProgressSpinner> spinner;
+    CurlUtils* curl;
 
     /**
-     * Verifies that the Ollama binary is available on the system.
-     *
-     * Uses the `which` command to check for Ollama in the PATH. If not found,
-     * displays an error message and either exits (CLI mode) or ends the session
-     * (interactive mode).
-     *
-     * Displays a checkmark on success.
+     * Pointer to the SystemUtils for processing `system()` calls.
      */
+    SystemUtils* system_utils;
+
     void check_ollama();
 
-    /**
-     * Initializes the CURL library and allocates a CURL handle.
-     *
-     * If initialization fails, displays an error message and exits or ends
-     * the session depending on the UI state.
-     *
-     * Displays a checkmark on success.
-     */
-    void init_curl();
-
-    /**
-     * Configures the CURL progress callback for download tracking.
-     *
-     * Sets up CURLOPT_XFERINFOFUNCTION and CURLOPT_XFERINFODATA to enable
-     * progress tracking during HTTP transfers via the ProgressSpinner.
-     *
-     * @note Must be called before curl_easy_perform().
-     */
-    void setup_progress_callback();
-
-    /**
-     * Removes leading and trailing whitespace from a string.
-     *
-     * Uses std::find_if with lambda predicates to efficiently trim both ends
-     * without creating intermediate strings.
-     *
-     * @param response The input string to trim.
-     * @return The trimmed string.
-     */
     std::string trim_response(std::string response);
 
-    /**
-     * Parses and displays a complete (non-streamed) JSON response from Ollama.
-     *
-     * Extracts the "response" field from the JSON and displays it formatted
-     * with a llama emoji. If JSON parsing fails, displays an error and exits
-     * or ends the session.
-     *
-     * @param response The complete JSON response from the Ollama API.
-     */
     void process_response(std::string response);
 
-    /**
-     * Parses and displays a streamed JSON response from Ollama.
-     *
-     * Processes the response as newline-delimited JSON chunks, extracting
-     * the "response" field from each chunk and printing it incrementally.
-     * Stops processing when a chunk has "done" set to true.
-     *
-     * @param response The complete streamed response (newline-delimited JSON).
-     */
     void process_response_stream(std::string response);
 
-    /**
-     * Fetches web content from the specified URL via HTTP/HTTPS request.
-     *
-     * Performs an HTTP GET or POST request to the given URL using libcurl,
-     * with automatic redirect following and JSON content-type header.
-     * Shows a spinner while the request is in progress.
-     *
-     * @param url The target URL to fetch from. Must be a valid URL string.
-     * @param post_data Optional POST request body. If provided, the request
-     *                  will be a POST request; otherwise a GET request.
-     *                  Defaults to std::nullopt (GET request).
-     *
-     * @return A WebContent struct containing the response body buffer,
-     *         HTTP status code, and error buffer.
-     *
-     * @throws Calls exit(1) on CURL errors or non-200 HTTP status codes
-     *         if the UI is not running. If UI is running, terminates the
-     *         session with EXIT_FAILURE instead.
-     *
-     * @note Initializes and cleans up CURL resources internally.
-     *       Automatically manages HTTP headers and follows redirects.
-     */
-    std::string fetch_web_content(const std::string& url, std::optional<std::string> post_data = std::nullopt);
-
   public:
-    /**
-     * Constructs an OllamaClient connected to a UserInterface.
-     *
-     * Initializes the Ollama API endpoint URLs, verifies the Ollama binary
-     * is installed, and creates a ProgressSpinner for network operations.
-     *
-     * @param ui Pointer to the UserInterface for displaying output. Must remain
-     *           valid for the lifetime of this OllamaClient.
-     *
-     * @note Calls check_ollama() during construction. Exits if Ollama is not found.
-     */
-    explicit OllamaClient(UserInterface* ui);
+    explicit OllamaClient(OllamaClientConfig* config, UserInterface* ui, CurlUtils* curl, SystemUtils* system_utils);
 
-    /**
-     * Sends a prompt to an Ollama model and displays the response.
-     *
-     * Performs the following steps:
-     * 1. Initializes CURL
-     * 2. Starts the progress spinner
-     * 3. Builds a JSON request with the model, prompt, and stream settings
-     * 4. Sends a POST request to the generate endpoint
-     * 5. Processes the response (streamed or complete)
-     * 6. Cleans up CURL resources
-     *
-     * Displays both the user's prompt and the model's response via the UI.
-     * Handles both CLI and interactive UI modes.
-     *
-     * @param config Configuration containing the model name, prompt, and stream setting.
-     *
-     * @note On error, displays an error message and exits or ends the session.
-     */
-    void query_model(OllamaPromptConfig config);
+    ~OllamaClient();
 
-    /**
-     * Retrieves and displays a list of available models from the Ollama server.
-     *
-     * Sends a GET request to the /api/tags endpoint and parses the response
-     * to extract model metadata (name, size, modification date). Displays
-     * each model with its information formatted as a table.
-     *
-     * @note On error, displays an error message and exits or ends the session.
-     * @returns The list of available local models.
-     */
+    std::vector<std::vector<float>> generate_embeddings(const std::vector<std::string>& texts,
+                                                        std::optional<OllamaClientConfig> config_opt = std::nullopt);
+
+    void query_model(std::optional<OllamaClientConfig> config_opt = std::nullopt);
+
     std::vector<std::string> query_model_list();
 };
