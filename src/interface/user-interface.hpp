@@ -219,8 +219,8 @@ class UserInterface {
      * @param interactive Whether interactive mode is enabled.
      * @param dark_theme Whether to active the dark theme.
      */
-    void print_args(const std::string& model, const std::string& prompt, bool stream,
-                    bool interactive, bool dark_theme);
+    void print_args(const std::string& model, const std::string& prompt, bool stream, bool interactive,
+                    bool dark_theme);
 
     /**
      * Static version of print_args() for non-interactive mode.
@@ -231,8 +231,8 @@ class UserInterface {
      * @param interactive Whether interactive mode is enabled.
      * @param dark_theme Whether to active the dark theme.
      */
-    static void print_args_noninteractive(const std::string& model, const std::string& prompt,
-                                          bool stream, bool interactive, bool dark_theme);
+    static void print_args_noninteractive(const std::string& model, const std::string& prompt, bool stream,
+                                          bool interactive, bool dark_theme);
 
     /**
      * Prints available models and their corresponding indexes for selection.
@@ -258,8 +258,7 @@ class UserInterface {
      * @param models The list of available local models.
      * @param model Pointer to a std::string to receive the user input.
      */
-    static void select_model_noninteractive(const std::vector<std::string>& models,
-                                            std::string* model);
+    static void select_model_noninteractive(const std::vector<std::string>& models, std::string* model);
 
     /**
      * Waits for and retrieves the next user input prompt (interactive mode).

@@ -4,6 +4,7 @@
 #include "interface/user-interface.hpp"
 #include <curl/curl.h>
 #include <iostream>
+#include <optional>
 
 /**
  * Configuration for sending a prompt to an Ollama model.
@@ -156,6 +157,30 @@ class OllamaClient {
      * @param response The complete streamed response (newline-delimited JSON).
      */
     void process_response_stream(std::string response);
+
+    /**
+     * Fetches web content from the specified URL via HTTP/HTTPS request.
+     *
+     * Performs an HTTP GET or POST request to the given URL using libcurl,
+     * with automatic redirect following and JSON content-type header.
+     * Shows a spinner while the request is in progress.
+     *
+     * @param url The target URL to fetch from. Must be a valid URL string.
+     * @param post_data Optional POST request body. If provided, the request
+     *                  will be a POST request; otherwise a GET request.
+     *                  Defaults to std::nullopt (GET request).
+     *
+     * @return A WebContent struct containing the response body buffer,
+     *         HTTP status code, and error buffer.
+     *
+     * @throws Calls exit(1) on CURL errors or non-200 HTTP status codes
+     *         if the UI is not running. If UI is running, terminates the
+     *         session with EXIT_FAILURE instead.
+     *
+     * @note Initializes and cleans up CURL resources internally.
+     *       Automatically manages HTTP headers and follows redirects.
+     */
+    std::string fetch_web_content(const std::string& url, std::optional<std::string> post_data = std::nullopt);
 
   public:
     /**

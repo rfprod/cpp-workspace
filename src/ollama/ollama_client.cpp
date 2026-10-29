@@ -10,6 +10,15 @@
 using nlohmann::json_abi_v3_11_2::json;
 
 /**
+ * Web content fetch result.
+ */
+struct WebContent {
+    std::string read_buffer;
+    char error_buffer[CURL_ERROR_SIZE];
+    long status = 0;
+};
+
+/**
  * CURL write callback for accumulating response data.
  *
  * Called by CURL whenever data is received. Appends the chunk to the
@@ -37,10 +46,7 @@ static size_t WriteCallback(char* contents, size_t size, size_t nmemb, std::stri
  * Prints a newline in CLI mode for clean output formatting.
  */
 OllamaClient::OllamaClient(UserInterface* ui) {
-    this->urls = {
-        generate_url : "http://localhost:11434/api/generate",
-        tags_url : "http://localhost:11434/api/tags"
-    };
+    this->urls = {generate_url : "http://localhost:11434/api/generate", tags_url : "http://localhost:11434/api/tags"};
     this->curl = nullptr;
     this->headers = nullptr;
     this->ui = ui;
@@ -143,13 +149,11 @@ void OllamaClient::setup_progress_callback() {
  */
 std::string OllamaClient::trim_response(std::string response) {
     response.erase(response.begin(),
-                   std::find_if(response.begin(), response.end(),
-                                [](unsigned char ch) { return !std::isspace(ch); }));
+                   std::find_if(response.begin(), response.end(), [](unsigned char ch) { return !std::isspace(ch); }));
 
-    response.erase(std::find_if(response.rbegin(), response.rend(),
-                                [](unsigned char ch) { return !std::isspace(ch); })
-                       .base(),
-                   response.end());
+    response.erase(
+        std::find_if(response.rbegin(), response.rend(), [](unsigned char ch) { return !std::isspace(ch); }).base(),
+        response.end());
     return response;
 }
 
@@ -169,12 +173,10 @@ void OllamaClient::process_response(std::string response) {
         json response_json = json::parse(response);
 
         if (this->ui->is_running() == false) {
-            printf("🦙 llama:\n%s\n---\n",
-                   this->trim_response(response_json["response"].get<std::string>()).c_str());
+            printf("🦙 llama:\n%s\n---\n", this->trim_response(response_json["response"].get<std::string>()).c_str());
         } else {
             this->ui->print_message("🦙 llama:");
-            this->ui->print_message(
-                this->trim_response(response_json["response"].get<std::string>()));
+            this->ui->print_message(this->trim_response(response_json["response"].get<std::string>()));
             this->ui->print_message("---");
         }
     } catch (const json::exception& err) {
@@ -254,6 +256,71 @@ void OllamaClient::process_response_stream(std::string response) {
     }
 }
 
+std::string OllamaClient::fetch_web_content(const std::string& url, std::optional<std::string> post_data) {
+    struct WebContent content {};
+    std::string message{};
+
+    this->init_curl();
+
+    this->spinner->start();
+
+    curl_easy_setopt(this->curl, CURLOPT_URL, url.c_str());
+
+    if (post_data != std::nullopt) {
+        curl_easy_setopt(this->curl, CURLOPT_POSTFIELDS, post_data->c_str());
+    }
+
+    curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, &content.read_buffer);
+    curl_easy_setopt(this->curl, CURLOPT_ERRORBUFFER, content.error_buffer);
+    curl_easy_setopt(this->curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    this->setup_progress_callback();
+
+    this->headers = curl_slist_append(this->headers, "Content-Type: application/json");
+    curl_easy_setopt(this->curl, CURLOPT_HTTPHEADER, this->headers);
+
+    CURLcode result = curl_easy_perform(this->curl);
+    this->spinner->stop();
+
+    curl_easy_getinfo(this->curl, CURLINFO_RESPONSE_CODE, &content.status);
+
+    curl_easy_cleanup(this->curl);
+    curl_slist_free_all(this->headers);
+    this->headers = nullptr;
+
+    if (result != CURLE_OK) {
+        message = std::format("CURL error: {}\n", curl_easy_strerror(result));
+        if (this->ui->is_running() == false) {
+            fprintf(stderr, "❌ %s", message.c_str());
+            if (content.error_buffer[0] != '\0') {
+                message = std::format("Details: {}\n", content.error_buffer);
+                fprintf(stderr, "%s", message.c_str());
+            }
+            exit(1);
+        } else {
+            this->ui->print_error(message);
+            if (content.error_buffer[0] != '\0') {
+                message = std::format("Details: {}\n", content.error_buffer);
+                this->ui->print_error(message);
+            }
+            this->ui->end_session(EXIT_FAILURE);
+        }
+    }
+    if (content.status != 200) {
+        message = std::format("Ollama returned HTTP status: {}\n", content.status);
+        if (this->ui->is_running() == false) {
+            fprintf(stderr, "❌ %s", message.c_str());
+            exit(1);
+        } else {
+            this->ui->print_error(message);
+            this->ui->end_session(EXIT_FAILURE);
+        }
+    }
+
+    return content.read_buffer;
+}
+
 /**
  * Sends a prompt to an Ollama model and displays the response.
  *
@@ -287,10 +354,6 @@ void OllamaClient::process_response_stream(std::string response) {
  *          or session instead.
  */
 void OllamaClient::query_model(OllamaPromptConfig config) {
-    this->init_curl();
-
-    this->spinner->start();
-
     std::string message = std::format("💬 user: {}\n", config.prompt.c_str());
     if (this->ui->is_running() == false) {
         printf("%s", message.c_str());
@@ -298,64 +361,11 @@ void OllamaClient::query_model(OllamaPromptConfig config) {
         this->ui->print_message(message);
     }
 
-    json request_payload = {
-        {"model", config.model}, {"prompt", config.prompt}, {"stream", config.stream}};
+    json request_payload = {{"model", config.model}, {"prompt", config.prompt}, {"stream", config.stream}};
 
     std::string post_data = request_payload.dump();
 
-    std::string response;
-
-    char error_buffer[CURL_ERROR_SIZE];
-
-    curl_easy_setopt(this->curl, CURLOPT_URL, this->urls.generate_url.c_str());
-    curl_easy_setopt(this->curl, CURLOPT_POSTFIELDS, post_data.c_str());
-    curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, &response);
-    curl_easy_setopt(this->curl, CURLOPT_ERRORBUFFER, error_buffer);
-
-    this->setup_progress_callback();
-
-    this->headers = curl_slist_append(this->headers, "Content-Type: application/json");
-    curl_easy_setopt(this->curl, CURLOPT_HTTPHEADER, this->headers);
-
-    CURLcode result = curl_easy_perform(this->curl);
-    this->spinner->stop();
-
-    long status = 0;
-    curl_easy_getinfo(this->curl, CURLINFO_RESPONSE_CODE, &status);
-
-    curl_easy_cleanup(this->curl);
-    curl_slist_free_all(this->headers);
-    this->headers = nullptr;
-
-    if (result != CURLE_OK) {
-        message = std::format("CURL error: {}\n", curl_easy_strerror(result));
-        if (this->ui->is_running() == false) {
-            fprintf(stderr, "%s", message.c_str());
-            if (error_buffer[0] != '\0') {
-                message = std::format("Details: {}\n", error_buffer);
-                fprintf(stderr, "%s", message.c_str());
-            }
-            exit(1);
-        } else {
-            this->ui->print_error(message);
-            if (error_buffer[0] != '\0') {
-                message = std::format("Details: {}\n", error_buffer);
-                this->ui->print_error(message);
-            }
-            this->ui->end_session(EXIT_FAILURE);
-        }
-    }
-    if (status != 200) {
-        message = std::format("Ollama returned HTTP status: {}\n", status);
-        if (this->ui->is_running() == false) {
-            fprintf(stderr, "%s", message.c_str());
-            exit(1);
-        } else {
-            this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
-        }
-    }
+    std::string response = this->fetch_web_content(this->urls.generate_url, post_data);
 
     if (config.stream) {
         this->process_response_stream(response);
@@ -397,64 +407,10 @@ void OllamaClient::query_model(OllamaPromptConfig config) {
  * @see OllamaPromptConfig for model information structure
  */
 std::vector<std::string> OllamaClient::query_model_list() {
-    this->init_curl();
-
-    this->spinner->start();
-
-    std::string response;
-
-    char error_buffer[CURL_ERROR_SIZE];
-
-    curl_easy_setopt(this->curl, CURLOPT_URL, this->urls.tags_url.c_str());
-    curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, &response);
-    curl_easy_setopt(this->curl, CURLOPT_ERRORBUFFER, error_buffer);
-
-    this->setup_progress_callback();
-
-    this->headers = curl_slist_append(this->headers, "Content-Type: application/json");
-    curl_easy_setopt(this->curl, CURLOPT_HTTPHEADER, this->headers);
-
-    CURLcode result = curl_easy_perform(this->curl);
-    this->spinner->stop();
-
-    long status = 0;
-    curl_easy_getinfo(this->curl, CURLINFO_RESPONSE_CODE, &status);
-
-    curl_easy_cleanup(this->curl);
-    curl_slist_free_all(this->headers);
-    this->headers = nullptr;
-
-    std::vector<std::string> models;
     std::string message{};
-    if (result != CURLE_OK) {
-        message = std::format("CURL error: {}\n", curl_easy_strerror(result));
-        if (this->ui->is_running() == false) {
-            fprintf(stderr, "❌ %s", message.c_str());
-            if (error_buffer[0] != '\0') {
-                message = std::format("Details: {}\n", error_buffer);
-                fprintf(stderr, "%s", message.c_str());
-            }
-            exit(1);
-        } else {
-            this->ui->print_error(message);
-            if (error_buffer[0] != '\0') {
-                message = std::format("Details: {}\n", error_buffer);
-                this->ui->print_error(message);
-            }
-            this->ui->end_session(EXIT_FAILURE);
-        }
-    }
-    if (status != 200) {
-        message = std::format("Ollama returned HTTP status: {}\n", status);
-        if (this->ui->is_running() == false) {
-            fprintf(stderr, "❌ %s", message.c_str());
-            exit(1);
-        } else {
-            this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
-        }
-    }
+    std::vector<std::string> models;
+
+    std::string response = this->fetch_web_content(this->urls.tags_url);
 
     try {
         const json data = json::parse(response);
@@ -480,10 +436,9 @@ std::vector<std::string> OllamaClient::query_model_list() {
         for (const auto& model : data["models"]) {
             const std::string name = model.value("name", "unknown");
             const std::string modified_at = model.value("modified_at", "unknown");
-            const std::string size =
-                model.contains("size")
-                    ? std::to_string(model["size"].get<long long>() / 1024 / 1024) + " Mb"
-                    : "size unknown";
+            const std::string size = model.contains("size")
+                                         ? std::to_string(model["size"].get<long long>() / 1024 / 1024) + " Mb"
+                                         : "size unknown";
 
             if (name != "unknown") {
                 models.push_back(name);

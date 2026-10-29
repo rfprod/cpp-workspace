@@ -92,8 +92,7 @@ void UserInterface::init_ncurses(void) {
     }
 
     if (has_colors()) {
-        printf("DEBUG: Checking theme - use_dark_theme = %s\n",
-               this->use_dark_theme ? "true" : "false");
+        printf("DEBUG: Checking theme - use_dark_theme = %s\n", this->use_dark_theme ? "true" : "false");
         if (this->use_dark_theme == true) {
             this->init_dark_theme();
         } else {
@@ -175,8 +174,7 @@ void UserInterface::draw_input_area() {
     mvprintw(layout.input_y, layout.input_x + 37, "%s", input_buffer.c_str());
 }
 
-UserInterface::UserInterface()
-    : resize_flag(0), running(0), input_cursor_x(0), layout({}), use_dark_theme(true) {
+UserInterface::UserInterface() : resize_flag(0), running(0), input_cursor_x(0), layout({}), use_dark_theme(true) {
     printf("DEBUG: use_dark_theme = %s\n", this->use_dark_theme ? "true" : "false");
     UserInterface::instance = this;
 }
@@ -234,8 +232,8 @@ void UserInterface::end_session(int exit_code) {
     exit(exit_code);
 }
 
-void UserInterface::print_args(const std::string& model, const std::string& prompt, bool stream,
-                               bool interactive, bool dark_theme) {
+void UserInterface::print_args(const std::string& model, const std::string& prompt, bool stream, bool interactive,
+                               bool dark_theme) {
     std::string buffer;
     buffer += "🛈 model = " + model + "\n";
     buffer += "🛈 prompt = " + prompt + "\n";
@@ -246,8 +244,8 @@ void UserInterface::print_args(const std::string& model, const std::string& prom
     this->print(buffer, UserInterface::MESSAGE_TYPE_NORMAL);
 }
 
-void UserInterface::print_args_noninteractive(const std::string& model, const std::string& prompt,
-                                              bool stream, bool interactive, bool dark_theme) {
+void UserInterface::print_args_noninteractive(const std::string& model, const std::string& prompt, bool stream,
+                                              bool interactive, bool dark_theme) {
     printf("\n");
     printf("🛈 model = %s\n", model.c_str());
     printf("🛈 prompt = %s\n", prompt.c_str());
@@ -318,8 +316,7 @@ void UserInterface::select_model(const std::vector<std::string>& models, std::st
     }
 }
 
-void UserInterface::select_model_noninteractive(const std::vector<std::string>& models,
-                                                std::string* model) {
+void UserInterface::select_model_noninteractive(const std::vector<std::string>& models, std::string* model) {
     int index{};
     int read_result{};
 
@@ -500,8 +497,7 @@ void UserInterface::render_loop(void) {
         std::unique_lock<std::mutex> lock(this->ui_mutex);
 
         // Wait for redraw request or timeout (100ms)
-        this->cv_redraw.wait_for(lock, std::chrono::milliseconds(1500),
-                                 [this] { return this->should_redraw.load(); });
+        this->cv_redraw.wait_for(lock, std::chrono::milliseconds(1500), [this] { return this->should_redraw.load(); });
 
         // Handle resize (under lock)
         if (this->resize_flag) {
@@ -572,11 +568,9 @@ void UserInterface::draw_spinner() {
     attron(COLOR_PAIR(DEFAULT_PAIR));
 
     if (progress > 0) {
-        mvprintw(this->layout.spinner_y, this->layout.spinner_x, "%c Progress: %d%%",
-                 spinner_chars[frame], progress);
+        mvprintw(this->layout.spinner_y, this->layout.spinner_x, "%c Progress: %d%%", spinner_chars[frame], progress);
     } else {
-        mvprintw(this->layout.spinner_y, this->layout.spinner_x, "%c Loading...",
-                 spinner_chars[frame]);
+        mvprintw(this->layout.spinner_y, this->layout.spinner_x, "%c Loading...", spinner_chars[frame]);
     }
 
     attroff(COLOR_PAIR(DEFAULT_PAIR));
