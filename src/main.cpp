@@ -85,8 +85,7 @@ int main(int argc, const char* argv[]) {
         } else {
             UserInterface::print_model_list_noninteractive(models);
             UserInterface::select_model_noninteractive(models, &model);
-            UserInterface::print_args_noninteractive(model, prompt, stream, interactive,
-                                                     dark_theme);
+            UserInterface::print_args_noninteractive(model, prompt, stream, interactive, dark_theme);
         }
     }
 

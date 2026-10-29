@@ -8,8 +8,7 @@
 ProgressSpinner::ProgressSpinner() : ui(nullptr), active(false) {
 }
 
-ProgressSpinner::ProgressSpinner(UserInterface* user_interface, bool activate)
-    : ui(user_interface), active(false) {
+ProgressSpinner::ProgressSpinner(UserInterface* user_interface, bool activate) : ui(user_interface), active(false) {
     if (activate && ui != nullptr) {
         start();
     }
@@ -104,8 +103,8 @@ int ProgressSpinner::progress_callback_impl(curl_off_t dltotal, curl_off_t dlnow
  *
  * @return 0 to continue the operation, 1 if clientp is nullptr.
  */
-int ProgressSpinner::progress_callback(void* clientp, curl_off_t dltotal, curl_off_t dlnow,
-                                       curl_off_t ultotal, curl_off_t ulnow) {
+int ProgressSpinner::progress_callback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal,
+                                       curl_off_t ulnow) {
     ProgressSpinner* self = static_cast<ProgressSpinner*>(clientp);
     if (self == nullptr) {
         return 1;

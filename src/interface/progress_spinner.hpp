@@ -159,6 +159,6 @@ class ProgressSpinner {
      * @note CURL calls this frequently; ensure your clientp points to a valid
      *       ProgressSpinner instance.
      */
-    static int progress_callback(void* clientp, curl_off_t dltotal, curl_off_t dlnow,
-                                 curl_off_t ultotal, curl_off_t ulnow);
+    static int progress_callback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal,
+                                 curl_off_t ulnow);
 };
