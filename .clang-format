@@ -1,14 +1,13 @@
-Language: Cpp
 BasedOnStyle: LLVM
 IndentWidth: 4
 UseTab: Never
 ColumnLimit: 100
 AllowShortFunctionsOnASingleLine: None
-AllowShortIfStatementsOnASingleLine: false
+AllowShortIfStatementsOnASingleLine: WithoutElse
 AllowShortLoopsOnASingleLine: false
 BraceWrapping:
   AfterClass: true
-  AfterControlStatement: true
+  AfterControlStatement: Always
   AfterFunction: true
   AfterNamespace: true
   AfterStruct: true
@@ -20,5 +19,5 @@ PointerAlignment: Left
 SpaceAfterCStyleCast: true
 SpaceBeforeAssignmentOperators: true
 SpaceBeforeParens: ControlStatements
-AlignConsecutiveAssignments: false
+AlignConsecutiveAssignments: None
 AlignTrailingComments: true

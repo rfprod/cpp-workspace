@@ -396,7 +396,7 @@ void OllamaClient::query_model(OllamaPromptConfig config) {
  *
  * @see OllamaPromptConfig for model information structure
  */
-void OllamaClient::query_model_list() {
+std::vector<std::string> OllamaClient::query_model_list() {
     this->init_curl();
 
     this->spinner->start();
@@ -425,6 +425,7 @@ void OllamaClient::query_model_list() {
     curl_slist_free_all(this->headers);
     this->headers = nullptr;
 
+    std::vector<std::string> models;
     std::string message{};
     if (result != CURLE_OK) {
         message = std::format("CURL error: {}\n", curl_easy_strerror(result));
@@ -484,6 +485,10 @@ void OllamaClient::query_model_list() {
                     ? std::to_string(model["size"].get<long long>() / 1024 / 1024) + " Mb"
                     : "size unknown";
 
+            if (name != "unknown") {
+                models.push_back(name);
+            }
+
             message = std::format("{}\t ({}) \t{}\n", modified_at, size, name);
             if (this->ui->is_running() == false) {
                 printf("%s", message.c_str());
@@ -502,4 +507,6 @@ void OllamaClient::query_model_list() {
             this->ui->end_session(EXIT_FAILURE);
         }
     }
+
+    return models;
 }

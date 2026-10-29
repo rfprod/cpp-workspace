@@ -257,6 +257,88 @@ void UserInterface::print_args_noninteractive(const std::string& model, const st
     printf("\n");
 }
 
+void UserInterface::print_model_list(const std::vector<std::string>& models) {
+    std::string buffer;
+    buffer += "\n🛈 Select a model from the list below:\n";
+    for (size_t i = 0; i < models.size(); i += 1) {
+        buffer += "[" + std::to_string(i) + "] " + models[i] + "\n";
+    }
+
+    this->print(buffer, UserInterface::MESSAGE_TYPE_NORMAL);
+}
+
+void UserInterface::print_model_list_noninteractive(const std::vector<std::string>& models) {
+    printf("\n🛈 Select a model from the list below:\n");
+    for (size_t i = 0; i < models.size(); i += 1) {
+        printf("[%zu] %s\n", i, models[i].c_str());
+    }
+}
+
+void UserInterface::select_model(const std::vector<std::string>& models, std::string* model) {
+    int index{};
+
+    if (models.size() == 0) {
+        this->print_error("There are no available models to select from.\n");
+        exit(1);
+    }
+
+    this->request_redraw();
+
+    this->input_buffer.clear();
+    int ch;
+
+    while ((ch = getch()) != '\n') {
+        if (ch == KEY_BACKSPACE || ch == 127) {
+            if (!input_buffer.empty()) {
+                input_buffer.pop_back();
+                input_cursor_x--;
+                this->request_redraw();
+            }
+        } else if (ch != ERR && isprint(ch)) {
+            if (input_buffer.length() < COLS - 40) { // Leave room for prompt
+                input_buffer.push_back(ch);
+                input_cursor_x++;
+                this->request_redraw();
+            }
+        }
+    }
+
+    if (this->input_buffer == "q" || this->input_buffer == "Q") {
+        this->end_session(EXIT_SUCCESS);
+    }
+
+    index = stoi(this->input_buffer);
+
+    if (index < 0 || index >= models.size()) {
+        std::string message = std::format("Model index %d does not exist.\n", index);
+        this->print_error(message);
+        this->select_model(models, model);
+    } else {
+        *model = models[index];
+    }
+}
+
+void UserInterface::select_model_noninteractive(const std::vector<std::string>& models,
+                                                std::string* model) {
+    int index{};
+    int read_result{};
+
+    if (models.size() == 0) {
+        fprintf(stderr, "There are no available models to select from.\n");
+        exit(1);
+    }
+
+    while (read_result != 1 || index < 0 || index >= models.size()) {
+        if (index < 0 || index >= models.size()) {
+            fprintf(stderr, "Model index %d does not exist.\n", index);
+        }
+        printf("Model index: ");
+        read_result = scanf("%d", &index);
+    }
+
+    *model = models[index];
+}
+
 bool UserInterface::next_prompt(std::string* prompt) {
     bool done = false;
 
@@ -374,8 +456,7 @@ void UserInterface::draw_output_area() {
 
         // Render from bottom to top (reverse order)
         for (auto line_it = display_lines.rbegin(); line_it != display_lines.rend(); ++line_it) {
-            if (current_line <= layout.output_y)
-                break;
+            if (current_line <= layout.output_y) break;
 
             if (type == UserInterface::MESSAGE_TYPE_ERROR) {
                 wattron(stdscr, COLOR_PAIR(ERROR_PAIR) | A_BOLD);

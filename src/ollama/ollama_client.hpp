@@ -1,7 +1,7 @@
 #pragma once
 
-#include "progress_spinner.hpp"
-#include "user-interface.hpp"
+#include "interface/progress_spinner.hpp"
+#include "interface/user-interface.hpp"
 #include <curl/curl.h>
 #include <iostream>
 
@@ -199,6 +199,7 @@ class OllamaClient {
      * each model with its information formatted as a table.
      *
      * @note On error, displays an error message and exits or ends the session.
+     * @returns The list of available local models.
      */
-    void query_model_list();
+    std::vector<std::string> query_model_list();
 };
