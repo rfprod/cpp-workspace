@@ -52,11 +52,10 @@ In order to run your own copy of the project one must fulfill the following requ
 🏆 **Visual Studio Code** - recommended for all operating systems
 
 Suggested extensions:
-- C/C++ Extension Pack (Microsoft)
-- CMake Tools (Microsoft)
-- CMake (twxs)
+- [C/C++ Extension Pack](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools-extension-pack)
+- [CMake Tools](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cmake-tools)
 
-🆗 **Visual Studio** - for Windows development
+See [`.vscode/extensions`](.vscode/extensions.json) for the complete list.
 
 ### Core dependencies
 
@@ -119,6 +118,26 @@ cz c
 ```
 
 ## FAQ
+
+### Commands
+
+1. Install
+
+```bash
+bash ./tools/shell/install.sh --help
+```
+
+2. Build
+
+```bash
+bash ./tools/shell/build.sh --help
+```
+
+3. Format
+
+```bash
+bash ./tools/shell/format.sh
+```
 
 ### Manual build
 

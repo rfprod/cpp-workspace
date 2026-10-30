@@ -1,22 +1,33 @@
-#include "interface/user-interface.hpp"
+#include "interface/user_interface.hpp"
 #include "ollama/ollama_client.hpp"
+#include "storage/qdrant_client.hpp"
+#include "utils/curl_utils.hpp"
+#include "utils/embedding_utils.hpp"
+#include "utils/system_utils.hpp"
+#include "utils/text_utils.hpp"
 #include <iostream>
 #include <unistd.h>
+#include <vector>
 
 int main(int argc, const char* argv[]) {
     std::string model = "gemma3n:latest";
+    std::string embedding_model = "embeddinggemma:latest";
     std::string prompt = "Hey! What's up!";
     bool stream = false;
     bool interactive = false;
     bool dark_theme = true;
+    bool skip_embedding = false;
 
     bool done = false;
+    std::string message{};
 
     std::string arg{};
     for (int i = 1; i < argc; i += 1) {
         arg = argv[i];
         if (arg.starts_with("--model=") == true) {
             model = arg.substr(8);
+        } else if (arg.starts_with("--embedding_model=") == true) {
+            embedding_model = arg.substr(18);
         } else if (arg.starts_with("--prompt=") == true) {
             prompt = arg.substr(9);
         } else if (arg.starts_with("--stream=") == true) {
@@ -25,6 +36,8 @@ int main(int argc, const char* argv[]) {
             interactive = arg.substr(14) == "true" ? true : false;
         } else if (arg.starts_with("--dark_theme=") == true) {
             dark_theme = arg.substr(13) == "true" ? true : false;
+        } else if (arg.starts_with("--skip_embedding=") == true) {
+            skip_embedding = arg.substr(17) == "true" ? true : false;
         }
     }
 
@@ -40,7 +53,7 @@ int main(int argc, const char* argv[]) {
         printf("---\n");
 
         ui.run();
-        ui.print_args(model, prompt, stream, interactive, dark_theme);
+        ui.print_args(model, embedding_model, prompt, stream, interactive, dark_theme);
 
         while (prompt.length() == 0) {
             done = ui.next_prompt(&prompt);
@@ -50,7 +63,7 @@ int main(int argc, const char* argv[]) {
             }
         }
     } else {
-        UserInterface::print_args_noninteractive(model, prompt, stream, interactive, dark_theme);
+        UserInterface::print_args_noninteractive(model, embedding_model, prompt, stream, interactive, dark_theme);
 
         if (prompt.length() == 0) {
             done = UserInterface::next_prompt_noninteractive(&prompt);
@@ -67,9 +80,19 @@ int main(int argc, const char* argv[]) {
         }
     }
 
-    OllamaClient client = OllamaClient(&ui);
+    CurlUtils curl(&ui);
 
-    std::vector<std::string> models = client.query_model_list();
+    SystemUtils system_utils(&ui);
+
+    QdrantClient storage_client(&ui, &curl, &system_utils);
+
+    struct OllamaClientConfig config {};
+
+    OllamaClient ollama_client(&config, &ui, &curl, &system_utils);
+
+    EmbeddingUtils embedding_utils(&ui, &curl, &ollama_client, &storage_client);
+
+    std::vector<std::string> models = ollama_client.query_model_list();
     bool force_model_selection = true;
     for (size_t i = 0; i < models.size(); i += 1) {
         if (models[i] == model) {
@@ -78,23 +101,56 @@ int main(int argc, const char* argv[]) {
     }
 
     if (force_model_selection == true) {
+        message = "⚠ A Language model is not selected.\n";
         if (interactive == true) {
+            ui.print_message(message);
             ui.print_model_list(models);
             ui.select_model(models, &model);
-            ui.print_args(model, prompt, stream, interactive, dark_theme);
+            ui.print_args(model, embedding_model, prompt, stream, interactive, dark_theme);
         } else {
+            UserInterface::print_message_noninteractive(message);
             UserInterface::print_model_list_noninteractive(models);
             UserInterface::select_model_noninteractive(models, &model);
-            UserInterface::print_args_noninteractive(model, prompt, stream, interactive, dark_theme);
+            UserInterface::print_args_noninteractive(model, embedding_model, prompt, stream, interactive, dark_theme);
         }
     }
 
-    struct OllamaPromptConfig config;
+    if (skip_embedding == false) {
+        bool force_embedding_model_selection = true;
+        for (size_t i = 0; i < models.size(); i += 1) {
+            if (models[i] == embedding_model) {
+                force_embedding_model_selection = false;
+            }
+        }
+        if (force_embedding_model_selection == true) {
+            message = "⚠ An Embedding model is not selected.\n";
+            if (interactive == true) {
+                ui.print_message(message);
+                ui.print_model_list(models);
+                ui.select_model(models, &embedding_model);
+                ui.print_args(model, embedding_model, prompt, stream, interactive, dark_theme);
+            } else {
+                UserInterface::print_message_noninteractive(message);
+                UserInterface::print_model_list_noninteractive(models);
+                UserInterface::select_model_noninteractive(models, &embedding_model);
+                UserInterface::print_args_noninteractive(model, embedding_model, prompt, stream, interactive,
+                                                         dark_theme);
+            }
+        }
+    }
+
     config.model = model;
+    config.embedding_model = embedding_model;
     config.prompt = prompt;
     config.stream = stream;
 
-    client.query_model(config);
+    if (skip_embedding == false) {
+        std::vector<std::string> urls = {
+            "https://raw.githubusercontent.com/rfprod/nx-ng-starter/refs/heads/main/README.md"};
+        embedding_utils.create_embedings(urls);
+    }
+
+    ollama_client.query_model();
 
     if (interactive == true) {
         while (done == false) {
@@ -104,7 +160,7 @@ int main(int argc, const char* argv[]) {
             }
 
             config.prompt = prompt;
-            client.query_model(config);
+            ollama_client.query_model();
             ui.request_redraw();
         }
         ui.end_session(EXIT_SUCCESS);

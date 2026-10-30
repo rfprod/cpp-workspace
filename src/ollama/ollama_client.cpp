@@ -1,5 +1,6 @@
 #include "ollama_client.hpp"
 #include <algorithm>
+#include <cstdlib>
 #include <curl/curl.h>
 #include <format>
 #include <iostream>
@@ -10,53 +11,40 @@
 using nlohmann::json_abi_v3_11_2::json;
 
 /**
- * Web content fetch result.
+ * Constructs an OllamaClient connected to a UserInterface.
+ *
+ * Initializes the Ollama API endpoint URLs, verifies the Ollama binary
+ * is installed, and creates a ProgressSpinner for network operations.
+ *
+ * @param config Pointer to the Ollama Client configuration options.
+ * @param ui Pointer to the UserInterface for displaying output.
+ * @param curl Pointer to a CurlUtils instance for HTTP communication with Qdrant.
+ * @param system_utils Pointer to a SustemUtils instance for `system()` call status handling.
+ *
+ * @note Calls check_ollama() during construction. Exits if Ollama is not found.
  */
-struct WebContent {
-    std::string read_buffer;
-    char error_buffer[CURL_ERROR_SIZE];
-    long status = 0;
-};
+OllamaClient::OllamaClient(OllamaClientConfig* config, UserInterface* ui, CurlUtils* curl, SystemUtils* system_utils) {
+    this->urls = {
+        generate_url : "http://localhost:11434/api/generate",
+        tags_url : "http://localhost:11434/api/tags",
+        embed_url : "http://localhost:11434/api/embed"
+    };
 
-/**
- * CURL write callback for accumulating response data.
- *
- * Called by CURL whenever data is received. Appends the chunk to the
- * userp string buffer.
- *
- * @param contents Pointer to the received data chunk.
- * @param size Size of each element (always 1 for this use case).
- * @param nmemb Number of elements received.
- * @param userp Pointer to the std::string buffer to append data to.
- *
- * @return Total bytes processed (size * nmemb).
- */
-static size_t WriteCallback(char* contents, size_t size, size_t nmemb, std::string* userp) {
-    userp->append(contents, size * nmemb);
-    return size * nmemb;
-}
-
-/**
- * Constructs an OllamaClient and initializes Ollama API endpoints.
- *
- * Sets up endpoint URLs for the local Ollama instance (localhost:11434),
- * verifies that Ollama is installed, and creates a ProgressSpinner for
- * use during network operations.
- *
- * Prints a newline in CLI mode for clean output formatting.
- */
-OllamaClient::OllamaClient(UserInterface* ui) {
-    this->urls = {generate_url : "http://localhost:11434/api/generate", tags_url : "http://localhost:11434/api/tags"};
-    this->curl = nullptr;
-    this->headers = nullptr;
+    this->config = config;
+    this->curl = curl;
     this->ui = ui;
-    this->spinner = std::make_unique<ProgressSpinner>(ui, false);
+    this->system_utils = system_utils;
 
     this->check_ollama();
 
     if (ui->is_running() == false) {
-        printf("\n");
+        UserInterface::print_message_noninteractive("\n");
     }
+}
+
+OllamaClient::~OllamaClient() {
+    int status = system("echo \"\" > ~/.ollama/history");
+    this->system_utils->catch_error(status);
 }
 
 /**
@@ -68,6 +56,8 @@ OllamaClient::OllamaClient(UserInterface* ui) {
  *   and exits or ends the session.
  *
  * Output is routed through the UserInterface (if available) or stdout/stderr.
+ *
+ * Displays a checkmark on success.
  */
 void OllamaClient::check_ollama() {
     std::string message{};
@@ -75,7 +65,7 @@ void OllamaClient::check_ollama() {
         message = "Ollama binary does not exist.\nInstallation instructions: "
                   "https://docs.ollama.com/linux\n";
         if (this->ui->is_running() == false) {
-            fprintf(stderr, "❌ %s", message.c_str());
+            UserInterface::print_error_noninteractive(message);
             exit(0);
         } else {
             this->ui->print_error(message);
@@ -84,59 +74,12 @@ void OllamaClient::check_ollama() {
     } else {
         message = "Ollama binary exists.\n";
         if (this->ui->is_running() == false) {
-            printf("✅ %s", message.c_str());
+            UserInterface::print_success_noninteractive(message);
         } else {
             this->ui->print_success(message);
         }
     }
 };
-
-/**
- * Initializes the CURL library and allocates a CURL handle.
- *
- * On failure, displays an error message and either exits (CLI mode) or
- * ends the session (interactive mode). On success, displays a checkmark.
- */
-void OllamaClient::init_curl() {
-    this->curl = curl_easy_init();
-    std::string message{};
-    if (!this->curl) {
-        message = "Failed to initialize CURL.\n";
-        if (this->ui->is_running() == false) {
-            fprintf(stderr, "❌ %s", message.c_str());
-            exit(1);
-        } else {
-            this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
-        }
-    } else {
-        message = "CURL initialized.\n";
-        if (this->ui->is_running() == false) {
-            printf("✅ %s", message.c_str());
-        } else {
-            this->ui->print_success(message);
-        }
-    }
-}
-
-/**
- * Configures CURL's progress callback for download tracking.
- *
- * Enables CURLOPT_NOPROGRESS and sets the progress callback function and
- * data pointer. This allows the ProgressSpinner to update during network
- * transfers.
- *
- * Does nothing if curl is nullptr.
- */
-void OllamaClient::setup_progress_callback() {
-    if (this->curl == nullptr) {
-        return;
-    }
-
-    curl_easy_setopt(curl, CURLOPT_NOPROGRESS, 0L);
-    curl_easy_setopt(curl, CURLOPT_XFERINFOFUNCTION, ProgressSpinner::progress_callback);
-    curl_easy_setopt(curl, CURLOPT_XFERINFODATA, spinner.get());
-}
 
 /**
  * Removes leading and trailing whitespace from a string.
@@ -173,7 +116,9 @@ void OllamaClient::process_response(std::string response) {
         json response_json = json::parse(response);
 
         if (this->ui->is_running() == false) {
-            printf("🦙 llama:\n%s\n---\n", this->trim_response(response_json["response"].get<std::string>()).c_str());
+            std::string message = std ::format(
+                "🦙 llama:\n{}\n---\n", this->trim_response(response_json["response"].get<std::string>()).c_str());
+            UserInterface::print_message_noninteractive(message);
         } else {
             this->ui->print_message("🦙 llama:");
             this->ui->print_message(this->trim_response(response_json["response"].get<std::string>()));
@@ -182,7 +127,7 @@ void OllamaClient::process_response(std::string response) {
     } catch (const json::exception& err) {
         std::string message = std::format("JSON parse error: {}\n", err.what());
         if (this->ui->is_running() == false) {
-            fprintf(stderr, "❌ %s", message.c_str());
+            UserInterface::print_error_noninteractive(message);
             exit(1);
         } else {
             this->ui->print_error(message);
@@ -211,7 +156,7 @@ void OllamaClient::process_response_stream(std::string response) {
 
     std::string text = "🦙 llama:\n";
     if (this->ui->is_running() == false) {
-        this->ui->print_message_noninteractive(text);
+        UserInterface::print_message_noninteractive(text);
     } else {
         accumulated += text;
     }
@@ -222,7 +167,7 @@ void OllamaClient::process_response_stream(std::string response) {
                 json chunk = json::parse(line);
                 text = chunk["response"].get<std::string>();
                 if (this->ui->is_running() == false) {
-                    this->ui->print_message_noninteractive(text);
+                    UserInterface::print_message_noninteractive(text);
                 } else {
                     accumulated += text;
 
@@ -238,7 +183,7 @@ void OllamaClient::process_response_stream(std::string response) {
             } catch (const json::exception& err) {
                 std::string message = std::format("JSON parse error: {}\n", err.what());
                 if (this->ui->is_running() == false) {
-                    fprintf(stderr, "❌ %s", message.c_str());
+                    UserInterface::print_error_noninteractive(message);
                     exit(1);
                 } else {
                     this->ui->print_error(message);
@@ -250,124 +195,90 @@ void OllamaClient::process_response_stream(std::string response) {
 
     text = "\n---\n";
     if (this->ui->is_running() == false) {
-        this->ui->print_message_noninteractive(text);
+        UserInterface::print_message_noninteractive(text);
     } else {
         this->ui->print_message(text);
     }
 }
 
-std::string OllamaClient::fetch_web_content(const std::string& url, std::optional<std::string> post_data) {
-    struct WebContent content {};
-    std::string message{};
+/**
+ * Generates embeddings for a list of text strings using the Ollama embedding model.
+ *
+ * This method sends each text to the Ollama embedding endpoint and retrieves
+ * the corresponding embedding vectors. Embeddings are processed sequentially.
+ *
+ * @param texts A vector of text strings to embed
+ * @param config_opt Configuration object specifying the embedding model to use
+ *
+ * @return A vector of embedding vectors, where each inner vector contains
+ *         the float values representing the embedding for the corresponding text.
+ *         The order of embeddings matches the order of input texts.
+ *
+ * @throws std::exception if the web request fails or the response cannot be parsed
+ */
+std::vector<std::vector<float>> OllamaClient::generate_embeddings(const std::vector<std::string>& texts,
+                                                                  std::optional<OllamaClientConfig> config_opt) {
+    std::vector<std::vector<float>> embeddings{};
 
-    this->init_curl();
+    json request_payload = {
+        {"model", config_opt != std::nullopt ? config_opt->embedding_model : config->embedding_model}, {"input", ""}};
 
-    this->spinner->start();
+    for (const auto& text : texts) {
+        request_payload["input"] = text;
 
-    curl_easy_setopt(this->curl, CURLOPT_URL, url.c_str());
+        std::string post_data = request_payload.dump();
 
-    if (post_data != std::nullopt) {
-        curl_easy_setopt(this->curl, CURLOPT_POSTFIELDS, post_data->c_str());
-    }
+        std::string response = this->curl->fetch_web_content(this->urls.embed_url, post_data);
 
-    curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-    curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, &content.read_buffer);
-    curl_easy_setopt(this->curl, CURLOPT_ERRORBUFFER, content.error_buffer);
-    curl_easy_setopt(this->curl, CURLOPT_FOLLOWLOCATION, 1L);
-
-    this->setup_progress_callback();
-
-    this->headers = curl_slist_append(this->headers, "Content-Type: application/json");
-    curl_easy_setopt(this->curl, CURLOPT_HTTPHEADER, this->headers);
-
-    CURLcode result = curl_easy_perform(this->curl);
-    this->spinner->stop();
-
-    curl_easy_getinfo(this->curl, CURLINFO_RESPONSE_CODE, &content.status);
-
-    curl_easy_cleanup(this->curl);
-    curl_slist_free_all(this->headers);
-    this->headers = nullptr;
-
-    if (result != CURLE_OK) {
-        message = std::format("CURL error: {}\n", curl_easy_strerror(result));
+#ifdef DEBUG
         if (this->ui->is_running() == false) {
-            fprintf(stderr, "❌ %s", message.c_str());
-            if (content.error_buffer[0] != '\0') {
-                message = std::format("Details: {}\n", content.error_buffer);
-                fprintf(stderr, "%s", message.c_str());
-            }
-            exit(1);
-        } else {
-            this->ui->print_error(message);
-            if (content.error_buffer[0] != '\0') {
-                message = std::format("Details: {}\n", content.error_buffer);
-                this->ui->print_error(message);
-            }
-            this->ui->end_session(EXIT_FAILURE);
+            UserInterface::print_message_noninteractive(
+                std::format("\t[DEBUG] generate_embeddings response {}\n", response));
         }
-    }
-    if (content.status != 200) {
-        message = std::format("Ollama returned HTTP status: {}\n", content.status);
-        if (this->ui->is_running() == false) {
-            fprintf(stderr, "❌ %s", message.c_str());
-            exit(1);
-        } else {
-            this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
-        }
+#endif
+
+        const json data = json::parse(response);
+
+        embeddings.push_back(data["embeddings"][0].get<std::vector<float>>());
     }
 
-    return content.read_buffer;
+    return embeddings;
 }
 
 /**
- * Sends a prompt to an Ollama model and displays the response.
+ * Sends a prompt query to the Ollama model and processes the response.
  *
- * Executes the following workflow:
- * 1. Initializes CURL and starts the progress spinner
- * 2. Formats and displays the user's prompt via the UI
- * 3. Constructs a JSON request payload with model, prompt, and stream settings
- * 4. Sends a POST request to the Ollama generate endpoint
- * 5. Validates HTTP response status (expects 200 OK)
- * 6. Processes the response as either streamed or complete JSON
- * 7. Cleans up CURL resources (handle and headers list)
+ * Displays the formatted user message to either the console or UI based on
+ * the UI's running state, then constructs a JSON request payload with the
+ * model, prompt, and stream settings. Fetches the response from the Ollama
+ * server and processes it either as a stream or as a complete response.
  *
- * The prompt is displayed immediately with a "💬 user:" prefix. The model's
- * response is processed based on the stream setting:
- * - If stream=true: Response chunks are printed incrementally as they arrive
- * - If stream=false: Entire response is printed after completion
- *
- * @param config OllamaPromptConfig containing:
- *               - model: Name of the model to query (e.g., "llama2")
- *               - prompt: The text prompt to send
- *               - stream: Whether to stream the response
- *
- * @note Error handling depends on UI mode:
- *       - CLI mode: Prints error to stderr and calls exit(1)
- *       - Interactive mode: Calls ui->print_error() and ui->end_session(EXIT_FAILURE)
- *
- * @note CURL errors include network failures, connection timeouts, and invalid URLs.
- *       HTTP errors are reported when Ollama returns non-200 status codes.
- *
- * @warning The method will not return if an error occurs; it terminates the program
- *          or session instead.
+ * @param config_opt The prompt configuration containing the model name, prompt
+ *               text, and stream preference
  */
-void OllamaClient::query_model(OllamaPromptConfig config) {
-    std::string message = std::format("💬 user: {}\n", config.prompt.c_str());
+void OllamaClient::query_model(std::optional<OllamaClientConfig> config_opt) {
+    std::string message =
+        std::format("💬 user: {}\n", config_opt != std::nullopt ? config_opt->prompt.c_str() : config->prompt.c_str());
     if (this->ui->is_running() == false) {
-        printf("%s", message.c_str());
+        UserInterface::print_message_noninteractive(message);
     } else {
         this->ui->print_message(message);
     }
 
-    json request_payload = {{"model", config.model}, {"prompt", config.prompt}, {"stream", config.stream}};
+    json request_payload;
+    if (config_opt != std::nullopt) {
+        request_payload = {
+            {"model", config_opt->model}, {"prompt", config_opt->prompt}, {"stream", config_opt->stream}};
+    } else {
+        request_payload = {{"model", config->model}, {"prompt", config->prompt}, {"stream", config->stream}};
+    }
 
     std::string post_data = request_payload.dump();
 
-    std::string response = this->fetch_web_content(this->urls.generate_url, post_data);
+    std::string response = this->curl->fetch_web_content(this->urls.generate_url, post_data);
 
-    if (config.stream) {
+    bool stream = config_opt != std::nullopt ? config_opt->stream : config->stream;
+    if (stream) {
         this->process_response_stream(response);
     } else {
         this->process_response(response);
@@ -375,42 +286,24 @@ void OllamaClient::query_model(OllamaPromptConfig config) {
 }
 
 /**
- * Retrieves and displays all available models from the Ollama server.
+ * Retrieves a list of available models from the Ollama server.
  *
- * Executes the following workflow:
- * 1. Initializes CURL and starts the progress spinner
- * 2. Sends a GET request to the Ollama /api/tags endpoint
- * 3. Validates HTTP response status (expects 200 OK)
- * 4. Parses the JSON response to extract the "models" array
- * 5. Displays each model with metadata in a formatted table
- * 6. Cleans up CURL resources (handle and headers list)
+ * Fetches the models list from the Ollama tags endpoint and parses the JSON
+ * response. Validates that the response contains a valid models array. Extracts
+ * and displays model metadata including name, modification timestamp, and size
+ * (converted from bytes to megabytes). Collects valid model names into a vector
+ * for return. Handles errors (invalid response structure or JSON parsing failures)
+ * by terminating with an error message directed to either stderr or the UI based
+ * on the UI's running state.
  *
- * For each model, displays:
- * - Last modified timestamp
- * - Size in megabytes (or "size unknown" if unavailable)
- * - Model name
- *
- * Output format: "{modified_at}\t ({size_mb}) \t{name}"
- *
- * @note Error handling depends on UI mode:
- *       - CLI mode: Prints error to stderr and calls exit(1)
- *       - Interactive mode: Calls ui->print_error() and ui->end_session(EXIT_FAILURE)
- *
- * @note Errors may occur at multiple stages:
- *       - CURL errors: Network failures, connection issues
- *       - HTTP errors: Non-200 response codes from Ollama
- *       - JSON errors: Malformed response or missing "models" field
- *
- * @warning The method will not return if an error occurs; it terminates the program
- *          or session instead.
- *
- * @see OllamaPromptConfig for model information structure
+ * @return A vector of available model names extracted from the server response.
+ *         Returns an empty vector if an error occurs during fetch or parsing.
  */
 std::vector<std::string> OllamaClient::query_model_list() {
     std::string message{};
     std::vector<std::string> models;
 
-    std::string response = this->fetch_web_content(this->urls.tags_url);
+    std::string response = this->curl->fetch_web_content(this->urls.tags_url);
 
     try {
         const json data = json::parse(response);
@@ -418,7 +311,7 @@ std::vector<std::string> OllamaClient::query_model_list() {
         if (!data.contains("models") || !data["models"].is_array()) {
             message = "Response has no models array.\n";
             if (this->ui->is_running() == false) {
-                fprintf(stderr, "❌ %s", message.c_str());
+                UserInterface::print_error_noninteractive(message);
                 exit(1);
             } else {
                 this->ui->print_error(message);
@@ -428,7 +321,7 @@ std::vector<std::string> OllamaClient::query_model_list() {
 
         message = "📃 available models:\n";
         if (this->ui->is_running() == false) {
-            printf("%s", message.c_str());
+            UserInterface::print_message_noninteractive(message);
         } else {
             this->ui->print_message(message);
         }
@@ -446,16 +339,16 @@ std::vector<std::string> OllamaClient::query_model_list() {
 
             message = std::format("{}\t ({}) \t{}\n", modified_at, size, name);
             if (this->ui->is_running() == false) {
-                printf("%s", message.c_str());
+                UserInterface::print_message_noninteractive(message);
             } else {
                 this->ui->print_message(message);
             }
         }
-        printf("\n");
+        UserInterface::print_message_noninteractive("\n");
     } catch (const json::exception& err) {
         message = std::format("JSON parse error: {}\n", err.what());
         if (this->ui->is_running() == false) {
-            fprintf(stderr, "❌ %s", message.c_str());
+            UserInterface::print_error_noninteractive(message);
             exit(1);
         } else {
             this->ui->print_error(message);
