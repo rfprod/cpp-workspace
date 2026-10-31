@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(cpp-workspace VERSION 0.3.0 LANGUAGES CXX)
+project(cpp-workspace VERSION 0.4.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -21,6 +21,7 @@ add_executable(cpp-workspace-app
   src/utils/text_utils.cpp
   src/utils/system_utils.cpp
   src/utils/embedding_utils.cpp
+  src/utils/retrieving_utils.cpp
   src/utils/http_utils.hpp
 )
 

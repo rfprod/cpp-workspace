@@ -19,6 +19,16 @@ struct WebContent {
 };
 
 /**
+ * Web content stream result.
+ */
+struct WebContentStream {
+    bool success;
+    char error_buffer[CURL_ERROR_SIZE];
+    std::string error_message;
+    int status = 0;
+};
+
+/**
  * CURL HTTP client wrapper for making web requests to the Ollama server.
  *
  * Provides a simplified interface for HTTP operations by encapsulating CURL
@@ -61,6 +71,14 @@ class CurlUtils {
     long check_service_status(const std::string& url, const std::map<std::string, std::string>& extra_headers = {},
                               long timeout_seconds = 5L);
 
+    static size_t curl_write_callback(char* contents, size_t size, size_t nmemb, std::string* userp);
+
+    // Streaming methods.
+    std::string stream_buffer;
+    static size_t curl_streaming_write_callback(char* contents, size_t size, size_t nmemb, void* userp);
+    void process_chunk(const std::string& chunk);
+    std::function<void(const std::string&)> stream_callback;
+
   public:
     explicit CurlUtils(UserInterface* ui);
 
@@ -69,8 +87,15 @@ class CurlUtils {
     long wait_for_service(const std::string& url, const std::map<std::string, std::string>& extra_headers = {},
                           int max_retries = 3, int initial_delay_ms = 500);
 
+    // Non-streaming version (buffers entire response)
     std::string fetch_web_content(const std::string& url, std::optional<std::string> post_data = std::nullopt,
                                   std::optional<std::string> custom_request_type = std::nullopt,
                                   std::optional<std::map<std::string, std::string>> extra_headers = std::nullopt,
                                   bool fail_on_http_error = true);
+
+    // Streaming version (processes chunks as they arrive)
+    WebContentStream fetch_web_content_stream(
+        const std::string& url, std::optional<std::string> post_data, std::function<void(const std::string&)> on_chunk,
+        std::optional<std::string> custom_request_type = std::nullopt,
+        std::optional<std::map<std::string, std::string>> extra_headers = std::nullopt, bool fail_on_http_error = true);
 };

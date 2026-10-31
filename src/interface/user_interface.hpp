@@ -150,10 +150,11 @@ class UserInterface {
     void end_session(int exit_code);
 
     void print_args(const std::string& model, const std::string& embedding_model, const std::string& prompt,
-                    bool stream, bool interactive, bool dark_theme);
+                    bool stream, bool rag, bool interactive, bool dark_theme, bool skip_embedding);
 
     static void print_args_noninteractive(const std::string& model, const std::string& embedding_model,
-                                          const std::string& prompt, bool stream, bool interactive, bool dark_theme);
+                                          const std::string& prompt, bool stream, bool rag, bool interactive,
+                                          bool dark_theme, bool skip_embedding);
 
     void print_model_list(const std::vector<std::string>& models);
 
@@ -167,7 +168,7 @@ class UserInterface {
 
     static bool next_prompt_noninteractive(std::string* prompt);
 
-    void print(const std::string& text, int type = UserInterface::MESSAGE_TYPE_NORMAL);
+    void print(const std::string& text, int type = UserInterface::MESSAGE_TYPE_NORMAL, bool stream = false);
 
     void print_error(const std::string& text);
 
@@ -177,7 +178,7 @@ class UserInterface {
 
     static void print_success_noninteractive(const std::string& text);
 
-    void print_message(const std::string& text);
+    void print_message(const std::string& text, bool stream = false);
 
     static void print_message_noninteractive(const std::string& text);
 

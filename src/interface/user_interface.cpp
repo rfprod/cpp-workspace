@@ -361,7 +361,7 @@ void UserInterface::draw_input_area() {
  */
 void UserInterface::draw_output_area() {
     // Clear the output area
-    for (int i = 0; i < layout.output_height; i++) {
+    for (int i = 0; i < layout.output_height; i += 1) {
         mvhline(layout.output_y + i, 1, ' ', COLS - 2);
     }
 
@@ -369,7 +369,7 @@ void UserInterface::draw_output_area() {
     int max_content_width = COLS - 4;
 
     // Iterate backwards through buffer (newest first)
-    for (auto it = output_buffer.rbegin(); it != output_buffer.rend(); ++it) {
+    for (auto it = output_buffer.rbegin(); it != output_buffer.rend(); it += 1) {
         if (current_line <= layout.output_y) {
             break;
         }
@@ -387,7 +387,7 @@ void UserInterface::draw_output_area() {
         }
 
         // Render from bottom to top (reverse order)
-        for (auto line_it = display_lines.rbegin(); line_it != display_lines.rend(); ++line_it) {
+        for (auto line_it = display_lines.rbegin(); line_it != display_lines.rend(); line_it += 1) {
             if (current_line <= layout.output_y) break;
 
             if (type == UserInterface::MESSAGE_TYPE_ERROR) {
@@ -712,8 +712,10 @@ void UserInterface::end_session(int exit_code) {
  * @param embedding_model Name of the embedding model in use.
  * @param prompt Initial prompt or query string provided by the user.
  * @param stream Boolean flag indicating whether streaming mode is enabled.
+ * @param rag Whether to run the program in the Retrieval Augmented Generation mode.
  * @param interactive Boolean flag indicating whether interactive mode is enabled.
  * @param dark_theme Boolean flag indicating whether dark theme is active.
+ * @param skip_embedding Whether to skip vectorizing documents and creating embeddings.
  *
  * Constructs a multi-line diagnostic string containing all provided configuration parameters.
  * Each parameter is formatted with a 🛈 (information) icon prefix for visual consistency.
@@ -735,14 +737,16 @@ void UserInterface::end_session(int exit_code) {
  * models, modes, and theme are in effect.
  */
 void UserInterface::print_args(const std::string& model, const std::string& embedding_model, const std::string& prompt,
-                               bool stream, bool interactive, bool dark_theme) {
+                               bool stream, bool rag, bool interactive, bool dark_theme, bool skip_embedding) {
     std::string buffer;
     buffer += "🛈 model = " + model + "\n";
     buffer += "🛈 embedding_model = " + embedding_model + "\n";
     buffer += "🛈 prompt = " + prompt + "\n";
     buffer += "🛈 stream = " + std::string(stream ? "true" : "false") + "\n";
+    buffer += "🛈 rag = " + std::string(rag ? "true" : "false") + "\n";
     buffer += "🛈 interactive = " + std::string(interactive ? "true" : "false") + "\n";
     buffer += "🛈 dark_theme = " + std::string(dark_theme ? "true" : "false") + "\n";
+    buffer += "🛈 skip_embedding = " + std::string(skip_embedding ? "true" : "false") + "\n";
 
     this->print(buffer, UserInterface::MESSAGE_TYPE_NORMAL);
 }
@@ -754,8 +758,10 @@ void UserInterface::print_args(const std::string& model, const std::string& embe
  * @param embedding_model Name of the embedding model in use.
  * @param prompt Initial prompt or query string provided by the user.
  * @param stream Boolean flag indicating whether streaming mode is enabled.
+ * @param rag Whether to run the program in the Retrieval Augmented Generation mode.
  * @param interactive Boolean flag indicating whether interactive mode is enabled.
  * @param dark_theme Boolean flag indicating whether dark theme is active.
+ * @param skip_embedding Whether to skip vectorizing documents and creating embeddings.
  *
  * @return void
  *
@@ -779,15 +785,17 @@ void UserInterface::print_args(const std::string& model, const std::string& embe
  * initialization or after cleanup, to avoid conflicts with the ncurses output buffer.
  */
 void UserInterface::print_args_noninteractive(const std::string& model, const std::string& embedding_model,
-                                              const std::string& prompt, bool stream, bool interactive,
-                                              bool dark_theme) {
+                                              const std::string& prompt, bool stream, bool rag, bool interactive,
+                                              bool dark_theme, bool skip_embedding) {
     printf("\n");
     printf("🛈 model = %s\n", model.c_str());
     printf("🛈 embedding_model = %s\n", embedding_model.c_str());
     printf("🛈 prompt = %s\n", prompt.c_str());
     printf("🛈 stream = %s\n", stream ? "true" : "false");
+    printf("🛈 rag = %s\n", rag ? "true" : "false");
     printf("🛈 interactive = %s\n", interactive ? "true" : "false");
     printf("🛈 dark_theme = %s\n", dark_theme ? "true" : "false");
+    printf("🛈 skip_embedding = %s\n", skip_embedding ? "true" : "false");
     printf("\n");
 }
 
@@ -978,7 +986,7 @@ bool UserInterface::next_prompt(std::string* prompt) {
                 this->request_redraw();
             }
         } else if (ch != ERR && isprint(ch)) {
-            if (input_buffer.length() < COLS - 40) { // Leave room for prompt
+            if (input_buffer.length() < COLS - 40) {
                 input_buffer.push_back(ch);
                 input_cursor_x++;
                 this->request_redraw();
@@ -1030,16 +1038,22 @@ bool UserInterface::next_prompt_noninteractive(std::string* prompt) {
  * @param text The message content to be displayed.
  * @param type The message type (MESSAGE_TYPE_NORMAL, MESSAGE_TYPE_ERROR, MESSAGE_TYPE_SUCCESS) that controls styling.
  * Defaults to MESSAGE_TYPE_NORMAL if not specified.
+ * @param stream In the stream mode, every chunk of text after the first one is appended to the last buffer entry.
+ * Defaults to 'false'.
  *
  * Thread-safe: acquires ui_mutex before adding the message to output_buffer.
  * Automatically requests a redraw via request_redraw() to display the new message.
  *
  * @see draw_output_area()
  */
-void UserInterface::print(const std::string& text, int type) {
+void UserInterface::print(const std::string& text, int type, bool stream) {
     {
         std::lock_guard<std::mutex> lock(this->ui_mutex);
-        output_buffer.push_back({text, type});
+        if (stream == true && !output_buffer.empty()) {
+            output_buffer.back().first += text;
+        } else {
+            output_buffer.push_back({text, type});
+        }
     }
     this->request_redraw();
 }
@@ -1070,11 +1084,13 @@ void UserInterface::print_success(const std::string& text) {
  * @brief Queues a normal message (plain text) and requests a redraw.
  *
  * @param text The message content.
+ * @param stream In the stream mode, every chunk of text after the first one is appended to the last buffer entry.
+ * Defaults to 'false'.
  *
  * @see print()
  */
-void UserInterface::print_message(const std::string& text) {
-    this->print(text, UserInterface::MESSAGE_TYPE_NORMAL);
+void UserInterface::print_message(const std::string& text, bool stream) {
+    this->print(text, UserInterface::MESSAGE_TYPE_NORMAL, stream);
 }
 
 /**
