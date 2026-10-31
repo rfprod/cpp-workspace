@@ -47,6 +47,48 @@ OllamaClient::~OllamaClient() {
     this->system_utils->catch_error(status);
 }
 
+template <typename T> const T& OllamaClient::get_config_value(const std::string& property_name) const {
+    if (property_name == "model") {
+        if constexpr (std::is_same_v<T, std::string>) {
+            return this->config->model;
+        }
+    }
+
+    if (property_name == "embedding_model") {
+        if constexpr (std::is_same_v<T, std::string>) {
+            return this->config->embedding_model;
+        }
+    }
+
+    if (property_name == "prompt") {
+        if constexpr (std::is_same_v<T, std::string>) {
+            return this->config->prompt;
+        }
+    }
+
+    if (property_name == "stream") {
+        if constexpr (std::is_same_v<T, bool>) {
+            return this->config->stream;
+        }
+    }
+
+    throw std::runtime_error("Property not supported: " + property_name);
+}
+template const std::string& OllamaClient::get_config_value<std::string>(const std::string&) const;
+template const bool& OllamaClient::get_config_value<bool>(const std::string&) const;
+
+const std::string& OllamaClient::get_url_value(const std::string& property_name) const {
+    if (property_name == "generate_url") {
+        return this->urls.generate_url;
+    }
+
+    if (property_name == "embed_url") {
+        return this->urls.embed_url;
+    }
+
+    throw std::runtime_error("Property not supported: " + property_name);
+}
+
 /**
  * Verifies that the Ollama binary is available on the system.
  *
@@ -136,68 +178,37 @@ void OllamaClient::process_response(std::string response) {
     }
 }
 
-/**
- * Parses and displays a streamed JSON response from Ollama.
- *
- * Processes the response as newline-delimited JSON chunks. For each chunk:
- * 1. Extracts the "response" field (text fragment)
- * 2. Prints it incrementally to stdout
- * 3. Checks the "done" field to determine if streaming is complete
- *
- * On JSON parse error, displays an error message and exits or ends the session.
- *
- * @param response The complete streamed response (newline-delimited JSON).
- */
-void OllamaClient::process_response_stream(std::string response) {
-    std::istringstream stream(response);
-    std::string line;
-
-    std::string accumulated{};
-
-    std::string text = "🦙 llama:\n";
+void OllamaClient::process_response_stream(const std::string& line) {
+#ifdef DEBUG
     if (this->ui->is_running() == false) {
-        UserInterface::print_message_noninteractive(text);
-    } else {
-        accumulated += text;
+        UserInterface::print_message_noninteractive(
+            std::format("\t[DEBUG] process_response_stream called with line: {}\n", << line.substr(0, 100)));
     }
+#endif
 
-    while (std::getline(stream, line)) {
-        if (!line.empty()) {
-            try {
-                json chunk = json::parse(line);
-                text = chunk["response"].get<std::string>();
-                if (this->ui->is_running() == false) {
-                    UserInterface::print_message_noninteractive(text);
-                } else {
-                    accumulated += text;
+    try {
+        json chunk_json = json::parse(line);
+        std::string text = chunk_json["response"].get<std::string>();
 
-                    if (text.find('\n') != std::string::npos || accumulated.length() > 256) {
-                        this->ui->print_message(accumulated);
-                        accumulated.clear();
-                    }
-                }
+        // First chunk: stream=false (new entry), subsequent chunks: stream=true (append)
+        static bool first_chunk = true;
+        bool is_streaming = !first_chunk;
+        first_chunk = false;
 
-                if (chunk["done"].get<bool>()) {
-                    break;
-                }
-            } catch (const json::exception& err) {
-                std::string message = std::format("JSON parse error: {}\n", err.what());
-                if (this->ui->is_running() == false) {
-                    UserInterface::print_error_noninteractive(message);
-                    exit(1);
-                } else {
-                    this->ui->print_error(message);
-                    this->ui->end_session(EXIT_FAILURE);
-                }
-            }
+        if (this->ui->is_running() == false) {
+            UserInterface::print_message_noninteractive(text);
+        } else {
+            this->ui->print_message(text, is_streaming);
         }
-    }
 
-    text = "\n---\n";
-    if (this->ui->is_running() == false) {
-        UserInterface::print_message_noninteractive(text);
-    } else {
-        this->ui->print_message(text);
+        if (chunk_json["done"].get<bool>()) {
+            first_chunk = true; // Reset for next response
+            return;
+        }
+    } catch (const json::exception& err) {
+        std::string message = std::format("JSON parse error in process_response_stream: {}\nError ID: {}\nLine was: {}",
+                                          err.what(), err.id, line);
+        UserInterface::print_error_noninteractive(message);
     }
 }
 
@@ -275,12 +286,20 @@ void OllamaClient::query_model(std::optional<OllamaClientConfig> config_opt) {
 
     std::string post_data = request_payload.dump();
 
-    std::string response = this->curl->fetch_web_content(this->urls.generate_url, post_data);
-
     bool stream = config_opt != std::nullopt ? config_opt->stream : config->stream;
     if (stream) {
-        this->process_response_stream(response);
+        WebContentStream response =
+            this->curl->fetch_web_content_stream(this->urls.generate_url, post_data, [this](const std::string& chunk) {
+                this->process_response_stream(chunk);
+            });
+        message = std::format("Stream successful: {}, Status: {}\n", response.success, response.status);
+        if (this->ui->is_running() == false) {
+            UserInterface::print_message_noninteractive(message);
+        } else {
+            this->ui->print_message(message);
+        }
     } else {
+        std::string response = this->curl->fetch_web_content(this->urls.generate_url, post_data);
         this->process_response(response);
     }
 }

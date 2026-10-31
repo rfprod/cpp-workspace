@@ -81,5 +81,7 @@ class QdrantClient {
 
     ~QdrantClient();
 
+    const std::string& get_url_value(const std::string& property_name) const;
+
     void store(const std::vector<std::string>& texts, const std::vector<std::vector<float>>& embeddings);
 };

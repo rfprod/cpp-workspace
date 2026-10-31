@@ -73,6 +73,14 @@ QdrantClient::~QdrantClient() {
     }
 }
 
+const std::string& QdrantClient::get_url_value(const std::string& property_name) const {
+    if (property_name == "collections_url") {
+        return this->urls.collections_url;
+    }
+
+    throw std::runtime_error("Property not supported: " + property_name);
+}
+
 /**
  * Initializes and starts the Qdrant Docker container with necessary configuration.
  * Pulls the Qdrant image, validates the QDRANT_API_KEY and QDRANT_API_KEY_READ_ONLY environment variables,
@@ -183,7 +191,9 @@ void QdrantClient::check_qdrant() {
     std::string message{};
 
     const char* qdrant_key = std::getenv("QDRANT_API_KEY");
-    long status = this->curl->wait_for_service(this->urls.collections_url, {{"api-key", qdrant_key}});
+    std::map<std::string, std::string> headers{{"api-key", qdrant_key}};
+
+    long status = this->curl->wait_for_service(this->urls.collections_url, headers);
 
     if (status == 200) {
         message = "Qdrant is healthy.\n";
@@ -217,9 +227,9 @@ void QdrantClient::check_qdrant() {
 bool QdrantClient::collection_exists(const std::string& collection_name) {
     std::string message{};
 
-    const char* qdrant_key = std::getenv("QDRANT_API_KEY");
     std::string url = std::format("{}/{}", this->urls.collections_url, collection_name);
 
+    const char* qdrant_key = std::getenv("QDRANT_API_KEY");
     std::map<std::string, std::string> headers{{"api-key", qdrant_key}};
 
     try {
@@ -247,9 +257,9 @@ bool QdrantClient::collection_exists(const std::string& collection_name) {
  * @param collection_name The name of the collection to delete.
  */
 void QdrantClient::delete_collection(const std::string& collection_name) {
-    const char* qdrant_key = std::getenv("QDRANT_API_KEY");
     std::string url = std::format("{}/{}", this->urls.collections_url, collection_name);
 
+    const char* qdrant_key = std::getenv("QDRANT_API_KEY");
     std::map<std::string, std::string> headers{{"api-key", qdrant_key}};
 
     try {
@@ -279,13 +289,12 @@ void QdrantClient::delete_collection(const std::string& collection_name) {
  * @param vector_size The dimensionality of the vectors (e.g., 384 for embeddinggemma:latest).
  */
 void QdrantClient::create_collection(const std::string& collection_name, size_t vector_size) {
-    const char* qdrant_key = std::getenv("QDRANT_API_KEY");
-
     json config = {{"vectors", {{"size", vector_size}, {"distance", "Cosine"}}}};
 
     std::string url = std::format("{}/{}", this->urls.collections_url, collection_name);
     std::string post_data = config.dump();
 
+    const char* qdrant_key = std::getenv("QDRANT_API_KEY");
     std::map<std::string, std::string> headers{{"api-key", qdrant_key}};
 
     try {
@@ -322,7 +331,6 @@ void QdrantClient::create_collection(const std::string& collection_name, size_t 
  */
 void QdrantClient::store(const std::vector<std::string>& texts, const std::vector<std::vector<float>>& embeddings) {
     std::string message{};
-    const char* qdrant_key = std::getenv("QDRANT_API_KEY");
     const std::string collection_name = "rag-app";
 
     if (texts.empty() || embeddings.empty()) {
@@ -382,6 +390,7 @@ void QdrantClient::store(const std::vector<std::string>& texts, const std::vecto
     std::string url = std::format("{}/{}/points", this->urls.collections_url, collection_name);
     std::string post_data = request_payload.dump();
 
+    const char* qdrant_key = std::getenv("QDRANT_API_KEY");
     std::map<std::string, std::string> headers{{"api-key", qdrant_key}};
 
 #ifdef DEBUG

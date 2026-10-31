@@ -3,24 +3,6 @@
 #include <string>
 
 /**
- * CURL write callback for accumulating response data.
- *
- * Called by CURL whenever data is received. Appends the chunk to the
- * userp string buffer.
- *
- * @param contents Pointer to the received data chunk.
- * @param size Size of each element (always 1 for this use case).
- * @param nmemb Number of elements received.
- * @param userp Pointer to the std::string buffer to append data to.
- *
- * @return Total bytes processed (size * nmemb).
- */
-static size_t WriteCallback(char* contents, size_t size, size_t nmemb, std::string* userp) {
-    userp->append(contents, size * nmemb);
-    return size * nmemb;
-}
-
-/**
  * Constructs a CurlUtils instance with dependency injection.
  *
  * Initializes CURL and headers pointers to nullptr, stores the provided
@@ -56,7 +38,7 @@ void CurlUtils::initialize() {
     this->curl = curl_easy_init();
     std::string message{};
     if (!this->curl) {
-        message = "❌ Failed to initialize CURL.\n";
+        message = "Failed to initialize CURL.\n";
         if (this->ui->is_running() == false) {
             UserInterface::print_error_noninteractive(message);
             exit(1);
@@ -65,9 +47,9 @@ void CurlUtils::initialize() {
             this->ui->end_session(EXIT_FAILURE);
         }
     } else {
-        message = "✅ CURL is initialized.\n";
+        message = "CURL is initialized.\n";
         if (this->ui->is_running() == false) {
-            UserInterface::print_message_noninteractive(message);
+            UserInterface::print_success_noninteractive(message);
         } else {
             this->ui->print_success(message);
         }
@@ -88,12 +70,115 @@ void CurlUtils::cleanup() {
     curl_easy_cleanup(this->curl);
     curl_slist_free_all(this->headers);
     this->headers = nullptr;
-    std::string message = "✅ CURL cleanup is complete.\n";
+    std::string message = "CURL cleanup is complete.\n";
     if (this->ui->is_running() == false) {
-        UserInterface::print_message_noninteractive(message);
+        UserInterface::print_success_noninteractive(message);
     } else {
         this->ui->print_success(message);
     }
+}
+
+/**
+ * CURL write callback for accumulating response data.
+ *
+ * Called by CURL whenever data is received. Appends the chunk to the
+ * userp string buffer.
+ *
+ * @param contents Pointer to the received data chunk.
+ * @param size Size of each element (always 1 for this use case).
+ * @param nmemb Number of elements received.
+ * @param userp Pointer to the std::string buffer to append data to.
+ *
+ * @return Total bytes processed (size * nmemb).
+ */
+size_t CurlUtils::curl_write_callback(char* contents, size_t size, size_t nmemb, std::string* userp) {
+    userp->append(contents, size * nmemb);
+    return size * nmemb;
+}
+
+size_t CurlUtils::curl_streaming_write_callback(char* contents, size_t size, size_t nmemb, void* userp) {
+    size_t realsize = size * nmemb;
+
+    CurlUtils* curl_obj = static_cast<CurlUtils*>(userp);
+
+#ifdef DEBUG
+    if (curl_obj->ui->is_running() == false) {
+        UserInterface::print_message_noninteractive(
+            std::format("\t[DEBUG] 🔗 curl_streaming_write_callback called, size: {}\n", realsize));
+    }
+#endif
+
+    try {
+        std::string chunk(contents, realsize);
+        curl_obj->process_chunk(chunk);
+    } catch (const std::exception& e) {
+        std::string message = std::format("Exception in curl_streaming_write_callback: {}", e.what());
+        if (curl_obj->ui->is_running() == false) {
+            UserInterface::print_error_noninteractive(message);
+        } else {
+            curl_obj->ui->print_error(message);
+        }
+        // Returning 0 aborts the transfer
+        return 0;
+    }
+
+    return realsize;
+}
+
+void CurlUtils::process_chunk(const std::string& chunk) {
+#ifdef DEBUG
+    if (this->ui->is_running() == false) {
+        UserInterface::print_message_noninteractive(
+            std::format("\t[DEBUG] 🔥 process_chunk called with {}\n", chunk.size()));
+    }
+#endif
+
+    this->stream_buffer += chunk;
+
+    // Extract complete lines (ending with \n).
+    size_t pos = 0;
+    while ((pos = this->stream_buffer.find('\n')) != std::string::npos) {
+        std::string line = this->stream_buffer.substr(0, pos);
+        this->stream_buffer.erase(0, pos + 1);
+
+        // Trim trailing \r (HTTP line endings are \r\n).
+        if (!line.empty() && line.back() == '\r') {
+            line.pop_back();
+        }
+
+#ifdef DEBUG
+        if (this->ui->is_running() == false) {
+            UserInterface::print_message_noninteractive(std::format(
+                "\t[DEBUG] 🔥 Extracted line: {} {}\n", line.substr(0, 80), (line.size() > 80 ? "..." : "")));
+        }
+#endif
+
+        if (line.empty() || line[0] != '{') {
+#ifdef DEBUG
+            if (this->ui->is_running() == false) {
+                UserInterface::print_message_noninteractive(std::format("\t[DEBUG] 🔥 Skipping non-JSON line.\n"));
+            }
+#endif
+            continue;
+        }
+
+        // Pass only valid JSON lines to the callback.
+        if (stream_callback) {
+#ifdef DEBUG
+            if (this->ui->is_running() == false) {
+                UserInterface::print_message_noninteractive(std::format("\t[DEBUG] 🔥 Calling stream_callback.\n"));
+            }
+#endif
+            stream_callback(line);
+        } else {
+#ifdef DEBUG
+            if (this->ui->is_running() == false) {
+                UserInterface::print_message_noninteractive("⚠️  stream_callback is NULL!\n");
+            }
+#endif
+        }
+    }
+    // Remaining incomplete data stays in stream_buffer for next chunk.
 }
 
 /**
@@ -180,9 +265,9 @@ long CurlUtils::wait_for_service(const std::string& url, const std::map<std::str
         http_code = this->check_service_status(url, extra_headers);
 
         if (http_code != -1) {
-            message = std::format("✅ Service available (HTTP {}) after {} attempt(s)\n", http_code, attempt + 1);
+            message = std::format("Service available (HTTP {}) after {} attempt(s)\n", http_code, attempt + 1);
             if (this->ui->is_running() == false) {
-                UserInterface::print_message_noninteractive(message);
+                UserInterface::print_success_noninteractive(message);
             } else {
                 this->ui->print_success(message);
             }
@@ -260,7 +345,7 @@ std::string CurlUtils::fetch_web_content(const std::string& url, std::optional<s
         curl_easy_setopt(this->curl, CURLOPT_CUSTOMREQUEST, custom_request_type->c_str());
     }
 
-    curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, CurlUtils::curl_write_callback);
     curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, &content.read_buffer);
     curl_easy_setopt(this->curl, CURLOPT_ERRORBUFFER, content.error_buffer);
     curl_easy_setopt(this->curl, CURLOPT_FOLLOWLOCATION, 1L);
@@ -303,8 +388,7 @@ std::string CurlUtils::fetch_web_content(const std::string& url, std::optional<s
             }
             this->ui->end_session(EXIT_FAILURE);
         }
-    }
-    if (content.status != 200) {
+    } else if (content.status != 200) {
         message = std::format("Request HTTP status: {}\n", content.status);
         if (this->ui->is_running() == false) {
             UserInterface::print_error_noninteractive(message);
@@ -324,4 +408,92 @@ std::string CurlUtils::fetch_web_content(const std::string& url, std::optional<s
     }
 
     return content.read_buffer;
+}
+
+WebContentStream CurlUtils::fetch_web_content_stream(const std::string& url, std::optional<std::string> post_data,
+                                                     std::function<void(const std::string&)> on_chunk,
+                                                     std::optional<std::string> custom_request_type,
+                                                     std::optional<std::map<std::string, std::string>> extra_headers,
+                                                     bool fail_on_http_error) {
+    this->stream_callback = on_chunk;
+
+    struct WebContentStream content {};
+    std::string message{};
+
+    this->initialize();
+    this->stream_buffer.clear();
+
+    curl_easy_setopt(this->curl, CURLOPT_URL, url.c_str());
+
+    if (post_data != std::nullopt) {
+        curl_easy_setopt(this->curl, CURLOPT_POSTFIELDS, post_data->c_str());
+    }
+
+    if (custom_request_type != std::nullopt) {
+        curl_easy_setopt(this->curl, CURLOPT_CUSTOMREQUEST, custom_request_type->c_str());
+    }
+
+    curl_easy_setopt(this->curl, CURLOPT_WRITEFUNCTION, CurlUtils::curl_streaming_write_callback);
+    curl_easy_setopt(this->curl, CURLOPT_WRITEDATA, static_cast<void*>(this));
+    curl_easy_setopt(this->curl, CURLOPT_ERRORBUFFER, content.error_buffer);
+    curl_easy_setopt(this->curl, CURLOPT_FOLLOWLOCATION, 1L);
+
+    this->headers = curl_slist_append(this->headers, "Content-Type: application/json");
+
+    if (extra_headers != std::nullopt) {
+        for (const auto& [key, value] : extra_headers.value()) {
+            std::string header = key + ": " + value;
+            this->headers = curl_slist_append(this->headers, header.c_str());
+        }
+    }
+
+    curl_easy_setopt(this->curl, CURLOPT_HTTPHEADER, this->headers);
+
+    CURLcode result = curl_easy_perform(this->curl);
+
+    curl_easy_getinfo(this->curl, CURLINFO_RESPONSE_CODE, &content.status);
+
+    this->cleanup();
+
+    content.success = true;
+    if (result != CURLE_OK) {
+        content.success = false;
+        content.error_message = curl_easy_strerror(result);
+        message = std::format("CURL error: {}\n", curl_easy_strerror(result));
+        if (this->ui->is_running() == false) {
+            if (content.error_buffer[0] != '\0') {
+                message += std::format("Details: {}\n", content.error_buffer);
+            }
+            UserInterface::print_error_noninteractive(message);
+            exit(1);
+        } else {
+            this->ui->print_error(message);
+            if (content.error_buffer[0] != '\0') {
+                message = std::format("Details: {}\n", content.error_buffer);
+                this->ui->print_error(message);
+            }
+            this->ui->end_session(EXIT_FAILURE);
+        }
+    } else if (content.status != 200) {
+        content.success = false;
+        content.error_message = std::format("HTTP {}", content.status);
+        message = std::format("Request HTTP status: {}\n", content.status);
+        if (this->ui->is_running() == false) {
+            UserInterface::print_error_noninteractive(message);
+            if (fail_on_http_error == true) {
+                exit(1);
+            } else {
+                throw HttpException(content.status, url);
+            }
+        } else {
+            this->ui->print_error(message);
+            if (fail_on_http_error == true) {
+                this->ui->end_session(EXIT_FAILURE);
+            } else {
+                throw HttpException(content.status, url);
+            }
+        }
+    }
+
+    return content;
 }

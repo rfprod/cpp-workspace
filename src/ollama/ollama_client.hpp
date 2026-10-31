@@ -12,6 +12,7 @@
  * Configuration for sending a prompt to an Ollama model.
  *
  * @param model The name of the model to query (e.g., "llama2", "neural-chat").
+ * @param embedding_model The name of the embedding model to query (e.g., "embeddinggemma").
  * @param prompt The text prompt to send to the model.
  * @param stream Whether to stream the response (true) or receive it all at once (false).
  */
@@ -80,19 +81,23 @@ class OllamaClient {
 
     std::string trim_response(std::string response);
 
-    void process_response(std::string response);
-
-    void process_response_stream(std::string response);
-
   public:
     explicit OllamaClient(OllamaClientConfig* config, UserInterface* ui, CurlUtils* curl, SystemUtils* system_utils);
 
     ~OllamaClient();
 
+    template <typename T> const T& get_config_value(const std::string& property_name) const;
+
+    const std::string& get_url_value(const std::string& property_name) const;
+
     std::vector<std::vector<float>> generate_embeddings(const std::vector<std::string>& texts,
                                                         std::optional<OllamaClientConfig> config_opt = std::nullopt);
 
     void query_model(std::optional<OllamaClientConfig> config_opt = std::nullopt);
+
+    void process_response(std::string response);
+
+    void process_response_stream(const std::string& chunk);
 
     std::vector<std::string> query_model_list();
 };
