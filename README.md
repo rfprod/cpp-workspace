@@ -1,10 +1,17 @@
 # cpp-workspace
 
-C++ workspace template with workflow automation.
+A C++ Retrieval-Augmented Generation (RAG) application powered by Ollama, featuring embeddings via Qdrant vector database, ncurses UI with theme support, and streaming output.
+
+## Capabilities
+
+- Connects to local Ollama for LLM inference.
+- Generates embeddings and stores them in Qdrant vector database.
+- Retrieves relevant documents and generates context-aware answers.
+- Provides an interactive ncurses terminal UI with streaming responses.
 
 ## Requirements
 
-In order to run your own copy of the project one must fulfill the following requirements.
+In order to run your own copy of the project it is recommended to satisfly the following requirements.
 
 ### Supported operating systems
 
@@ -60,8 +67,8 @@ See [`.vscode/extensions`](.vscode/extensions.json) for the complete list.
 ### Core dependencies
 
 - [Git]((https://git-scm.com/))
-- [Python](https://www.python.org/) or [NodeJS](https://nodejs.org/) `for conventional commits`
-- [Bash 5](https://www.gnu.org/software/bash/) `for scripting`
+- [Python](https://www.python.org/) or [NodeJS](https://nodejs.org/) _for conventional commits_
+- [Bash 5](https://www.gnu.org/software/bash/) _for scripting_
 - [CMake](https://cmake.org/)
 - A **Build system** (one of):
   - [Make](https://en.wikipedia.org/wiki/Make_(software))
@@ -70,51 +77,30 @@ See [`.vscode/extensions`](.vscode/extensions.json) for the complete list.
   - [GCC](https://gcc.gnu.org/)
   - [Clang](https://clang.llvm.org/)
   - [MSVC](https://visualstudio.microsoft.com/vs/features/cplusplus/)
+- [Docker](https://www.docker.com/) _to run [Qdrant](https://qdrant.tech/) locally_
+- [Ollama](https://ollama.com/)
 
-## Committing changes to the repo
+### Environment variables
 
-### Linux
+In the project root, create a `.env` file with the following content
 
-Using [commitizen cli](https://github.com/commitizen/cz-cli) is mandatory.
-
-The commit message are validated during the premerge checks.
-
-It is assumed that [Node.js](https://nodejs.org/) is installed.
-
-Given the [NodeJS](https://nodejs.org/) is installed, and [commitizen cli is installed as a global dependency](https://github.com/commitizen/cz-cli#conventional-commit-messages-as-a-global-utility), the following command should be used to initiate the commit process
-
-```bash
-git cz
+```env
+export QDRANT_URL="http://localhost:6333"
+export QDRANT_API_KEY="your-secure-read-and-write-key"
+export QDRANT_API_KEY_READ_ONLY="your-secure-read-only-key"
 ```
 
-Alternatively, given there are no conflicts with other projects that use [the commitizen npm package](https://www.npmjs.com/package/commitizen), one could install commitizen globally via `pypi` like this
+## Contributing: Conventional Commits
 
+This project requires [Commitizen](https://commitizen.org/) for standardized commit messages.
+
+**Setup:**
+- **Linux/macOS:** `brew install commitizen` or `pip install commitizen`
+- **Windows:** Use WSL2 and follow Linux instructions, or install via [MSYS2](https://www.msys2.org/)
+
+**Committing:**
 ```bash
-sudo pip3 install -U Commitizen
-```
-
-### OSX
-
-Using [commitizen](https://pypi.org/project/commitizen/) is mandatory.
-
-The commit message are validated during the premerge checks.
-
-After installing the package as a global utility using the following command
-
-```bash
-brew install commitizen
-```
-
-one can use one of the following commands to initiate the commit process
-
-```bash
-cz commit
-```
-
-or
-
-```bash
-cz c
+cz commit  # Interactive commit prompt
 ```
 
 ## FAQ
@@ -123,36 +109,57 @@ cz c
 
 1. Install
 
-```bash
-bash ./tools/shell/install.sh --help
-```
+    ```bash
+    bash ./tools/shell/install.sh --help
+    ```
 
 2. Build
 
-```bash
-bash ./tools/shell/build.sh --help
-```
+    ```bash
+    bash ./tools/shell/build.sh --help
+    ```
 
 3. Format
 
-```bash
-bash ./tools/shell/format.sh
-```
+    ```bash
+    bash ./tools/shell/format.sh
+    ```
 
 ### Manual build
 
 ```bash
-rm -rf ./build/*
-conan install . --build=missing
-cmake --preset conan-release
-cmake --build --preset conan-release
+rm -rf ./build/* ;\
+  conan install . --build=missing ;\
+  cmake --preset conan-release ;\
+  cmake --build --preset conan-release
 ```
 
 or
 
 ```bash
-rm -rf ./build/* ./CMakeUserPresets.json
-conan install . --build=missing
-cmake --preset conan-release
-cmake --build --preset conan-release
+rm -rf ./build/* ./CMakeUserPresets.json ;\
+  conan install . --build=missing ;\
+  cmake --preset conan-release ;\
+  cmake --build --preset conan-release
 ```
+
+### Run the app
+
+Source .env first, then run the app
+
+```bash
+source .env; \
+  ./build/Release/bin/cpp-workspace-app
+```
+
+### Quick Start
+
+1. Install Ollama and pull two models, e.g. [__embeddinggemma:latest__](https://ollama.com/library/embeddinggemma) and [__gemma3n:latest__](https://ollama.com/library/gemma3n:latest).
+2. Build the project or [download the latest release](https://github.com/rfprod/cpp-workspace/releases):
+    ```bash
+    bash tools/shell/build.sh --clean --release --exe-args '--skip_embedding=true'
+    ```
+3. Run in interactive RAG mode:
+    ```bash
+    ./build/Release/bin/cpp-workspace-app --interactive=true --rag=true
+    ```
