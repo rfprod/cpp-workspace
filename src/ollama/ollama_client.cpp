@@ -182,7 +182,7 @@ void OllamaClient::process_response_stream(const std::string& line) {
 #ifdef DEBUG
     if (this->ui->is_running() == false) {
         UserInterface::print_message_noninteractive(
-            std::format("\t[DEBUG] process_response_stream called with line: {}\n", << line.substr(0, 100)));
+            std::format("\t[DEBUG] process_response_stream called with line: {}\n", line.substr(0, 100)));
     }
 #endif
 

@@ -67,9 +67,26 @@ void CurlUtils::initialize() {
  * @note Assumes cleanup operations succeed without error checking.
  */
 void CurlUtils::cleanup() {
-    curl_easy_cleanup(this->curl);
-    curl_slist_free_all(this->headers);
-    this->headers = nullptr;
+    if (this->curl) {
+#ifdef DEBUG
+        if (this->ui->is_running() == false) {
+            UserInterface::print_message_noninteractive(
+                std::format("\t[DEBUG] curl pointer before cleanup: {}\n", static_cast<void*>(this->curl)));
+        }
+#endif
+        curl_easy_cleanup(this->curl);
+        this->curl = nullptr;
+    }
+    if (this->headers) {
+#ifdef DEBUG
+        if (this->ui->is_running() == false) {
+            UserInterface::print_message_noninteractive(
+                std::format("\t[DEBUG] curl headers pointer before cleanup: {}\n", static_cast<void*>(this->headers)));
+        }
+#endif
+        curl_slist_free_all(this->headers);
+        this->headers = nullptr;
+    }
     std::string message = "CURL cleanup is complete.\n";
     if (this->ui->is_running() == false) {
         UserInterface::print_success_noninteractive(message);
