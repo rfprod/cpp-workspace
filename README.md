@@ -163,7 +163,7 @@ This app accepts the following command-line arguments to customize behavior:
 | `--skip_embedding=<true\|false>` | Boolean | `false`                 | Skip embedding creation.                              |
 | `--help=<true\|false>`           | Boolean | `false`                 | Print help.                                           |
 
-### Notes
+#### Notes
 
 - Boolean arguments accept **`true`** or **`false`** (case-sensitive lowercase)
 - String arguments (`--model`, `--embedding_model`, `--prompt`) accept any alphanumeric string; no spaces or special characters are recommended
@@ -181,11 +181,33 @@ source .env; \
 ### Quick Start
 
 1. Install Ollama and pull two models, e.g. [**embeddinggemma:latest**](https://ollama.com/library/embeddinggemma) and [**gemma3n:latest**](https://ollama.com/library/gemma3n:latest).
-2. Build the project or [download the latest release](https://github.com/rfprod/cpp-workspace/releases):
+2. Set up a virtual environment containing required dependencies
+
+   ```bash
+   sudo apt-get update; \
+     sudo apt-get install -y \
+       build-essential \
+       cmake \
+       git \
+       python3-pip \
+       clang-format \
+       clang-tidy \
+       cppcheck; \
+     python3 -m venv .venv
+   ```
+
+   ```bash
+   source .venv/bin/activate; \
+     pip install conan; \
+     conan --version; \
+     conan profile detect --force
+   ```
+
+3. Build the project or [download the latest release](https://github.com/rfprod/cpp-workspace/releases):
    ```bash
    bash tools/shell/build.sh --clean --release --exe-args '--skip_embedding=true'
    ```
-3. Run in interactive RAG mode:
+4. Run in interactive RAG mode:
    ```bash
    ./build/Release/bin/cpp-workspace-app --interactive=true --rag=true
    ```
