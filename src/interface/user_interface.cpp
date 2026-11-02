@@ -132,7 +132,7 @@ void UserInterface::init_ncurses(void) {
     const WINDOW* w = initscr();
     if (!w) {
         const char* term = getenv("TERM");
-        std::cerr << "Failed to initialize ncurses with TERM=" << (term ? term : "unset") << "\n";
+        fprintf(stderr, "Failed to initialize ncurses with TERM=%s\n", term ? term : "unset");
         std::exit(EXIT_FAILURE);
     }
 
@@ -141,13 +141,13 @@ void UserInterface::init_ncurses(void) {
     // Setup terminal.
     if (cbreak() == ERR || noecho() == ERR) {
         endwin();
-        std::cerr << "Terminal setup failed\n";
+        fprintf(stderr, "Terminal setup failed\n");
         std::exit(EXIT_FAILURE);
     }
 
     // Enable function keys and arrow keys.
     if (keypad(stdscr, TRUE) == ERR) {
-        std::cerr << "Warning: keypad() not supported\n";
+        fprintf(stderr, "Warning: keypad() not supported\n");
     }
 
     // Block on input (getch waits for input).
@@ -155,7 +155,7 @@ void UserInterface::init_ncurses(void) {
 
     // Cursor hiding (may not be supported).
     if (curs_set(0) == ERR) {
-        std::cerr << "Warning: cursor control not supported on this terminal\n";
+        fprintf(stderr, "Warning: cursor control not supported on this terminal\n");
     }
 
     if (has_colors()) {
@@ -1106,8 +1106,8 @@ void UserInterface::print_message(const std::string& text, bool stream) {
  * @see print_error()
  */
 void UserInterface::print_error_noninteractive(const std::string& text) {
-    std::cerr << "❌ " << text;
-    std::cerr.flush();
+    fprintf(stderr, "❌ %s", text.c_str());
+    fflush(stderr);
 }
 
 /**
@@ -1123,8 +1123,8 @@ void UserInterface::print_error_noninteractive(const std::string& text) {
  * @see print_error()
  */
 void UserInterface::print_success_noninteractive(const std::string& text) {
-    std::cout << "✅ " << text;
-    std::cout.flush();
+    fprintf(stdout, "✅ %s", text.c_str());
+    fflush(stdout);
 }
 
 /**
@@ -1139,8 +1139,8 @@ void UserInterface::print_success_noninteractive(const std::string& text) {
  * @see print_message()
  */
 void UserInterface::print_message_noninteractive(const std::string& text) {
-    std::cout << text;
-    std::cout.flush();
+    fprintf(stdout, "%s", text.c_str());
+    fflush(stdout);
 }
 
 /**

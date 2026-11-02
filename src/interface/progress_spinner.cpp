@@ -63,7 +63,8 @@ void ProgressSpinner::start() {
             const char spinner_chars[] = {'|', '/', '-', '\\'};
             int i = 0;
             while (this->active) {
-                std::cout << "\r" << spinner_chars[i++ % 4] << " Loading..." << std::flush;
+                fprintf(stdout, "\r%c Loading...", spinner_chars[i++ % 4]);
+                fflush(stdout);
                 std::this_thread::sleep_for(std::chrono::milliseconds(100));
             }
             UserInterface::print_message_noninteractive("\n");
@@ -117,10 +118,12 @@ int ProgressSpinner::progress_callback_impl(curl_off_t dltotal, curl_off_t dlnow
 
         if (dltotal > 0) {
             int progress = (dlnow * 100) / dltotal;
-            std::cout << "\r▰▰▰▱ Progress: " << progress << "%     " << std::flush;
+            fprintf(stdout, "\r▰▰▰▱ Progress %d%%     ", progress);
+            fflush(stdout);
         } else {
             static int i = 0;
-            std::cout << "\r" << spinner_chars[i++ % 4] << " Loading..." << std::flush;
+            fprintf(stdout, "\r%c Loading...", spinner_chars[i++ % 4]);
+            fflush(stdout);
         }
         return 0;
     }
