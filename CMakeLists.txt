@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(cpp-workspace VERSION 0.4.1 LANGUAGES CXX)
+project(cpp-workspace VERSION 0.4.2 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -17,6 +17,7 @@ add_executable(cpp-workspace-app
   src/interface/user_interface.cpp
   src/ollama/ollama_client.cpp
   src/storage/qdrant_client.cpp
+  src/utils/args_utils.cpp
   src/utils/curl_utils.cpp
   src/utils/text_utils.cpp
   src/utils/system_utils.cpp

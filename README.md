@@ -53,12 +53,14 @@ In order to run your own copy of the project it is recommended to satisfly the f
       ```bash
       git config --global core.autocrlf false
       git config --global core.eol lf
+      ```
 
 ### Integrated development environment
 
 🏆 **Visual Studio Code** - recommended for all operating systems
 
 Suggested extensions:
+
 - [C/C++ Extension Pack](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cpptools-extension-pack)
 - [CMake Tools](https://marketplace.visualstudio.com/items?itemName=ms-vscode.cmake-tools)
 
@@ -66,12 +68,12 @@ See [`.vscode/extensions`](.vscode/extensions.json) for the complete list.
 
 ### Core dependencies
 
-- [Git]((https://git-scm.com/))
+- [Git](<(https://git-scm.com/)>)
 - [Python](https://www.python.org/) or [NodeJS](https://nodejs.org/) _for conventional commits_
 - [Bash 5](https://www.gnu.org/software/bash/) _for scripting_
 - [CMake](https://cmake.org/)
 - A **Build system** (one of):
-  - [Make](https://en.wikipedia.org/wiki/Make_(software))
+  - [Make](<https://en.wikipedia.org/wiki/Make_(software)>)
   - [Ninja](https://ninja-build.org/)
 - A **C++ compiler** (one of):
   - [GCC](https://gcc.gnu.org/)
@@ -95,10 +97,12 @@ export QDRANT_API_KEY_READ_ONLY="your-secure-read-only-key"
 This project requires [Commitizen](https://commitizen.org/) for standardized commit messages.
 
 **Setup:**
+
 - **Linux/macOS:** `brew install commitizen` or `pip install commitizen`
 - **Windows:** Use WSL2 and follow Linux instructions, or install via [MSYS2](https://www.msys2.org/)
 
 **Committing:**
+
 ```bash
 cz commit  # Interactive commit prompt
 ```
@@ -109,21 +113,21 @@ cz commit  # Interactive commit prompt
 
 1. Install
 
-    ```bash
-    bash ./tools/shell/install.sh --help
-    ```
+   ```bash
+   bash ./tools/shell/install.sh --help
+   ```
 
 2. Build
 
-    ```bash
-    bash ./tools/shell/build.sh --help
-    ```
+   ```bash
+   bash ./tools/shell/build.sh --help
+   ```
 
 3. Format
 
-    ```bash
-    bash ./tools/shell/format.sh
-    ```
+   ```bash
+   bash ./tools/shell/format.sh
+   ```
 
 ### Manual build
 
@@ -143,9 +147,31 @@ rm -rf ./build/* ./CMakeUserPresets.json ;\
   cmake --build --preset conan-release
 ```
 
+### Runtime arguments
+
+This app accepts the following command-line arguments to customize behavior:
+
+| Argument                         | Type    | Default                 | Description                                           |
+| -------------------------------- | ------- | ----------------------- | ----------------------------------------------------- |
+| `--model=<name>`                 | String  | `gemma3n:latest`        | The LLM model to use for inference.                   |
+| `--embedding_model=<name>`       | String  | `embeddinggemma:latest` | The model to use for generating embeddings.           |
+| `--prompt=<text>`                | String  | `Hey! What's up!`       | Initial prompt or query to send to the model.         |
+| `--stream=<true\|false>`         | Boolean | `false`                 | Enable streaming responses.                           |
+| `--rag=<true\|false>`            | Boolean | `false`                 | Enable Retrieval-Augmented Generation (RAG) mode.     |
+| `--interactive=<true\|false>`    | Boolean | `false`                 | Enable interactive mode for multi-turn conversations. |
+| `--dark_theme=<true\|false>`     | Boolean | `false`                 | Use dark theme for the ncurses interface.             |
+| `--skip_embedding=<true\|false>` | Boolean | `false`                 | Skip embedding creation.                              |
+| `--help=<true\|false>`           | Boolean | `false`                 | Print help.                                           |
+
+### Notes
+
+- Boolean arguments accept **`true`** or **`false`** (case-sensitive lowercase)
+- String arguments (`--model`, `--embedding_model`, `--prompt`) accept any alphanumeric string; no spaces or special characters are recommended
+- Arguments can be provided in any order
+
 ### Run the app
 
-Source .env first, then run the app
+Source `.env` first (see the [Environment variables](#environment-variables) section), then run the app
 
 ```bash
 source .env; \
@@ -154,12 +180,12 @@ source .env; \
 
 ### Quick Start
 
-1. Install Ollama and pull two models, e.g. [__embeddinggemma:latest__](https://ollama.com/library/embeddinggemma) and [__gemma3n:latest__](https://ollama.com/library/gemma3n:latest).
+1. Install Ollama and pull two models, e.g. [**embeddinggemma:latest**](https://ollama.com/library/embeddinggemma) and [**gemma3n:latest**](https://ollama.com/library/gemma3n:latest).
 2. Build the project or [download the latest release](https://github.com/rfprod/cpp-workspace/releases):
-    ```bash
-    bash tools/shell/build.sh --clean --release --exe-args '--skip_embedding=true'
-    ```
+   ```bash
+   bash tools/shell/build.sh --clean --release --exe-args '--skip_embedding=true'
+   ```
 3. Run in interactive RAG mode:
-    ```bash
-    ./build/Release/bin/cpp-workspace-app --interactive=true --rag=true
-    ```
+   ```bash
+   ./build/Release/bin/cpp-workspace-app --interactive=true --rag=true
+   ```
