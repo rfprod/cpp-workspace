@@ -92,7 +92,7 @@ jobs:
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
         run: |
           source .venv/bin/activate
-          bash ./tools/shell/build.sh --clean --tests --coverage --no-run
+          bash ./tools/shell/build.sh --tests --coverage --no-run
           mkdir -p build/site/coverage
           cp -r build/Debug/coverage/. build/site/coverage/
           deactivate
