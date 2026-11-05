@@ -16,7 +16,7 @@ int main(int argc, const char* argv[]) {
     std::string message{};
 
     ArgsUtils args_utils;
-    struct ParsedArgs parsed_args = args_utils.parse_args(&argc, argv);
+    struct ParsedArgs parsed_args = args_utils.parse_args(argc, argv);
 
     if (parsed_args.help == true) {
         args_utils.print_help();

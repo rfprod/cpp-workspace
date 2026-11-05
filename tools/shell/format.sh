@@ -9,15 +9,23 @@ cd "$REPO_ROOT"
 
 echo "Running from: $(pwd)"
 echo "---"
-echo "Directory structure:"
+echo "Directory structure [src]:"
 ls -la src/
 echo "---"
-echo "All .cpp and .hpp files:"
-find src -type f \( -name "*.cpp" -o -name "*.hpp" \)
+echo "Directory structure [tests]:"
+ls -la tests/
+echo "---"
+echo "All .cpp and .hpp files [src]:"
+find src tests -type f \( -name "*.cpp" -o -name "*.hpp" \)
+echo "---"
+echo "All .cpp and .hpp files [tests]:"
+find tests -type f \( -name "*.cpp" -o -name "*.hpp" \)
 echo "---"
 
-find src -type f \( -name "*.cpp" -o -name "*.hpp" \) -exec clang-format -i -Werror {} +
+echo "Checking with clang-format..."
+find src tests -type f \( -name "*.cpp" -o -name "*.hpp" \) -exec clang-format -i -Werror {} +
 
+echo "Checking with cppcheck..."
 cppcheck --std=c++20 \
   --enable=all \
   --error-exitcode=1 \
@@ -26,5 +34,7 @@ cppcheck --std=c++20 \
   -I src/ \
   -I src/interface \
   -I src/ollama \
+  -I src/storage \
   -I src/utils \
-  src/
+  -I tests/ \
+  src/ tests/

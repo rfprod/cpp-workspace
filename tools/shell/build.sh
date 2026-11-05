@@ -19,6 +19,8 @@ show_help() {
     -r, --release           Build in Release mode (default: Debug)
     -p, --package           Package release artifacts
     -b DIR, --build-dir DIR Specify build directory (default: build)
+    -t, --tests             Build and run unit tests (default: off)
+    --no-tests              Build without unit tests (overrides ENABLE_TESTS)
     --cxx-flags FLAGS       Set CMAKE_CXX_FLAGS (default: -DDEBUG)
     --no-debug-flags        Build without -DDEBUG flag
     --exe-args ARGS         Pass arguments to executable (e.g., '--skip_embedding=true')"
@@ -26,6 +28,7 @@ show_help() {
   echo -e "${YELLOW}Environment Variables:${NC}
     BUILD_TYPE        Set build type: Debug or Release (default: Debug)
     CLEAN_BUILD       Set to true to clean before building (default: false)
+    ENABLE_TESTS      Set to true to build and run tests (default: false)
     CMAKE_CXX_FLAGS   Set C++ compiler flags (default: -DDEBUG)
     EXECUTABLE_ARGS   Arguments to pass to the executable"
 
@@ -35,6 +38,11 @@ show_help() {
     ./tools/shell/build.sh --cxx-flags '-DDEBUG -Wall'                          # Custom flags
     ./tools/shell/build.sh --no-debug-flags                                     # No debug flags
     ./tools/shell/build.sh --exe-args '--skip_embedding=true --other-arg=true'  # Pass args to exe
+    ./tools/shell/build.sh --tests                                              # Debug build with tests
+    ./tools/shell/build.sh --release --tests                                    # Release build with tests
+
+    ENABLE_TESTS=true ./tools/shell/build.sh                                    # Via env var
+
     CMAKE_CXX_FLAGS='-O3' ./tools/shell/build.sh                                # Via env var"
 }
 
@@ -42,6 +50,7 @@ show_help() {
 BUILD_DIR="build"
 BUILD_TYPE="${BUILD_TYPE:-Debug}"
 CLEAN_BUILD="${CLEAN_BUILD:-false}"
+ENABLE_TESTS="${ENABLE_TESTS:-false}"
 PACKAGE_RELEASE="${PACKAGE_RELEASE:-false}"
 # Additional configuration
 CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS:--DDEBUG}"
@@ -69,6 +78,14 @@ while [[ $# -gt 0 ]]; do
     -b|--build-dir)
       BUILD_DIR="$2"
       shift 2
+      ;;
+    -t|--tests)
+      ENABLE_TESTS=true
+      shift
+      ;;
+    --no-tests)
+      ENABLE_TESTS=false
+      shift
       ;;
     --cxx-flags)
       CMAKE_CXX_FLAGS="$2"
@@ -174,6 +191,28 @@ load_env_file() {
   fi
 }
 
+# Checks whether ncurses++ is linked to the core library.
+check_test_link_for_ncurses_cxx() {
+  local LINK_FILE="$BUILD_DIR/$BUILD_TYPE/tests/CMakeFiles/cpp-workspace-tests.dir/link.txt"
+
+  if [ ! -f "$LINK_FILE" ]; then
+    log_warning "Test link file not found at $LINK_FILE, skipping ncurses++ check"
+    return 0
+  fi
+
+  local COUNT
+  COUNT=$(grep -c "ncurses++" "$LINK_FILE" || true)
+
+  if [ "$COUNT" -gt 0 ]; then
+    log_error "Test link line references ncurses++ (C++ binding), which can reintroduce a competing main()"
+    log_error "Ensure the ncurses Conan option with_cxx is False and clean the build directory"
+    exit 1
+  fi
+
+  log_success "Test link line is free of ncurses++"
+}
+
+
 # Main build script
 main() {
   ensure_project_root
@@ -191,6 +230,14 @@ main() {
 
   log_info "Version: ${VERSION}, Build: ${BUILD_NUMBER}"
 
+  local TESTS_CMAKE_FLAG
+  TESTS_CMAKE_FLAG=OFF
+  if [ "$ENABLE_TESTS" = true ]; then
+    TESTS_CMAKE_FLAG=ON
+  fi
+
+  log_info "Enable tests: ${ENABLE_TESTS}, Tests CMake Flag: ${TESTS_CMAKE_FLAG}"
+
   # Clean build directory if requested
   if [ "$CLEAN_BUILD" = true ]; then
     log_info "Cleaning build directory..."
@@ -201,7 +248,7 @@ main() {
   mkdir -p "$BUILD_DIR"
 
   log_info "Installing Conan dependencies..."
-  if conan install . --build=missing -s build_type="$BUILD_TYPE"; then
+  if conan install . --build=missing -s build_type="$BUILD_TYPE" -o "with_tests=$([ "$ENABLE_TESTS" = true ] && echo True || echo False)"; then
     log_success "Dependencies installed"
   else
     log_error "Failed to install dependencies"
@@ -209,7 +256,7 @@ main() {
   fi
 
   log_info "Configuring CMake (${BUILD_TYPE})..."
-  if cmake -S . -B "$BUILD_DIR"/"$BUILD_TYPE" -DCMAKE_TOOLCHAIN_FILE="$PWD"/"$BUILD_DIR"/"$BUILD_TYPE"/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DCMAKE_CXX_FLAGS="$CMAKE_CXX_FLAGS" -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13; then
+  if cmake -S . -B "$BUILD_DIR"/"$BUILD_TYPE" -DCMAKE_TOOLCHAIN_FILE="$PWD"/"$BUILD_DIR"/"$BUILD_TYPE"/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DCPP_WORKSPACE_BUILD_TESTS="$TESTS_CMAKE_FLAG" -DCMAKE_CXX_FLAGS="$CMAKE_CXX_FLAGS" -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13; then
 
     log_success "CMake configured"
   else
@@ -225,11 +272,23 @@ main() {
     exit 1
   fi
 
-  log_info "Running tests..."
-  if ctest --test-dir "$BUILD_DIR/$BUILD_TYPE" --output-on-failure; then
-    log_success "All tests passed"
+  if [ "$ENABLE_TESTS" = true ]; then
+    TEST_BIN="$BUILD_DIR/$BUILD_TYPE/bin/cpp-workspace-tests"
+    if [ ! -x "$TEST_BIN" ]; then
+      log_error "Test binary not found at $TEST_BIN"
+      exit 1
+    fi
+
+    log_info "Running tests..."
+    if ctest --test-dir "$BUILD_DIR/$BUILD_TYPE" --output-on-failure; then
+      log_success "All tests passed"
+    else
+      log_warning "Some tests failed (continuing)"
+    fi
+
+    check_test_link_for_ncurses_cxx
   else
-    log_warning "Some tests failed (continuing)"
+    log_info "Skipping tests (use --tests to enable)"
   fi
 
   local BIN_NAME

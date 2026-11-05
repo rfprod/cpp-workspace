@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(cpp-workspace VERSION 0.4.2 LANGUAGES CXX)
+project(cpp-workspace VERSION 0.4.3 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -11,38 +11,44 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
-add_executable(cpp-workspace-app
-  src/main.cpp
-  src/interface/progress_spinner.cpp
-  src/interface/user_interface.cpp
-  src/ollama/ollama_client.cpp
-  src/storage/qdrant_client.cpp
-  src/utils/args_utils.cpp
-  src/utils/curl_utils.cpp
-  src/utils/text_utils.cpp
-  src/utils/system_utils.cpp
-  src/utils/embedding_utils.cpp
-  src/utils/retrieving_utils.cpp
-  src/utils/http_utils.hpp
-)
+option(CPP_WORKSPACE_BUILD_TESTS "Build unit tests" ON)
 
-target_include_directories(cpp-workspace-app
-  PRIVATE
-  ${CMAKE_SOURCE_DIR}/src
-  ${CMAKE_SOURCE_DIR}/src/interface
-  ${CMAKE_SOURCE_DIR}/src/ollama
-  ${CMAKE_SOURCE_DIR}/src/storage
-  ${CMAKE_SOURCE_DIR}/src/utils
-)
+message(STATUS "Current source dir: ${CMAKE_CURRENT_SOURCE_DIR}")
+file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/interface/*.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/interface/*.hpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/ollama/*.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/ollama/*.hpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/*.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/storage/*.hpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/*.cpp
+     ${CMAKE_CURRENT_SOURCE_DIR}/src/utils/*.hpp)
+if(NOT CORE_SOURCES)
+  message(FATAL_ERROR "No core sources found. Check the paths in CORE_SOURCES.")
+endif()
+add_library(cpp-workspace-core
+  STATIC
+  ${CORE_SOURCES})
+target_include_directories(cpp-workspace-core
+  PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/src)
+
+add_executable(cpp-workspace-app src/main.cpp)
+target_link_libraries(cpp-workspace-app PRIVATE cpp-workspace-core)
 
 find_package(fmt REQUIRED)
 find_package(CURL REQUIRED)
 find_package(nlohmann_json REQUIRED)
 find_package(Curses REQUIRED)
-target_link_libraries(cpp-workspace-app
+target_link_libraries(cpp-workspace-core
   PRIVATE
   fmt::fmt
   CURL::libcurl
   nlohmann_json::nlohmann_json
   Curses::Curses
 )
+
+if(CPP_WORKSPACE_BUILD_TESTS)
+  enable_testing()
+  add_subdirectory(tests)
+endif()

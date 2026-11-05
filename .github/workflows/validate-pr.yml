@@ -87,6 +87,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake git python3-pip clang-format clang-tidy cppcheck
+          sudo apt-get install -y libcurl4-openssl-dev
 
       - name: Install Conan
         if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
@@ -101,7 +102,7 @@ jobs:
         if: ${{ steps.src-changed.outputs.change == 'true' || steps.deps-changed.outputs.change == 'true' }}
         run: |
           source .venv/bin/activate
-          conan install . --build=missing -s build_type="${BUILD_TYPE}"
+          conan install . --build=missing -s build_type="${BUILD_TYPE}" -o "with_tests=True"
           deactivate
         env:
           BUILD_TYPE: Release
@@ -128,6 +129,7 @@ jobs:
           cmake -S . -B "build/${BUILD_TYPE}" \
             -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" \
             -DCMAKE_TOOLCHAIN_FILE="$PWD/build/${BUILD_TYPE}/generators/conan_toolchain.cmake" \
+            -DCPP_WORKSPACE_BUILD_TESTS="ON" \
             -DCMAKE_CXX_COMPILER=g++-13
           cmake --build "build/${BUILD_TYPE}" \
             --parallel

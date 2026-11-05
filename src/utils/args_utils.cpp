@@ -28,7 +28,7 @@ ArgsUtils::ArgsUtils() {
  * @param argv Array of argument strings from main()
  * @return ParsedArgs struct containing all parsed argument values
  */
-struct ParsedArgs ArgsUtils::parse_args(const int* argc, const char* argv[]) {
+struct ParsedArgs ArgsUtils::parse_args(const int argc, const char* const argv[]) const {
     struct ParsedArgs parsed_args {};
     parsed_args.model = "gemma3n:latest";
     parsed_args.embedding_model = "embeddinggemma:latest";
@@ -41,7 +41,7 @@ struct ParsedArgs ArgsUtils::parse_args(const int* argc, const char* argv[]) {
     parsed_args.help = false;
 
     std::string arg{};
-    for (int i = 1; i < *argc; i += 1) {
+    for (int i = 1; i < argc; i += 1) {
         arg = argv[i];
         size_t eq_pos = arg.find('=');
 
@@ -49,11 +49,9 @@ struct ParsedArgs ArgsUtils::parse_args(const int* argc, const char* argv[]) {
             continue;
         }
 
-        std::string key = arg.substr(0, eq_pos);
-        std::string val = arg.substr(eq_pos + 1);
-
-        if (handlers.count(key)) {
-            handlers[key](val, &parsed_args);
+        auto it = handlers.find(arg.substr(0, eq_pos));
+        if (it != handlers.end()) {
+            it->second(arg.substr(eq_pos + 1), &parsed_args);
         }
     }
 
@@ -61,11 +59,10 @@ struct ParsedArgs ArgsUtils::parse_args(const int* argc, const char* argv[]) {
 }
 
 /**
- * Prints usage information for all supported runtime arguments and exits.
- * Displays each argument name, type, description, and default value.
+ * Returns the help text containing information about all supported runtime arguments.
  */
-void ArgsUtils::print_help() {
-    printf("Usage: app [OPTIONS]\n\n"
+const char* ArgsUtils::help_text() {
+    return "Usage: app [OPTIONS]\n\n"
            "Options:\n"
            "  --model=<name>                The LLM model to use for inference.\n"
            "                                (default: gemma3n:latest)\n\n"
@@ -84,7 +81,15 @@ void ArgsUtils::print_help() {
            "  --skip_embedding=<true|false> Skip embedding creation.\n"
            "                                (default: false)\n\n"
            "  --help=<true|false>           Print help.\n"
-           "                                (default: false)\n");
+           "                                (default: false)\n";
+}
+
+/**
+ * Prints usage information for all supported runtime arguments and exits.
+ * Displays each argument name, type, description, and default value.
+ */
+void ArgsUtils::print_help() {
+    printf("%s", this->help_text());
 
     std::exit(0);
 }
