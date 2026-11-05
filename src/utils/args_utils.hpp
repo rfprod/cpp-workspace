@@ -39,7 +39,9 @@ class ArgsUtils {
   public:
     ArgsUtils();
 
-    struct ParsedArgs parse_args(const int* argc, const char* argv[]);
+    struct ParsedArgs parse_args(const int argc, const char* const argv[]) const;
+
+    const char* help_text();
 
     void print_help();
 };
