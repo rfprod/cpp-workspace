@@ -39,7 +39,7 @@ class Argv {
 
 } // namespace
 
-TEST(ArgsUtilsDefaults, ReturnsDefaultsWhenNoArgsGiven) {
+TEST(ArgsUtils_defaults, returns_defaults_when_no_args_given) {
     ArgsUtils utils;
     Argv argv;
     auto p = utils.parse_args(argv.argc(), argv.argv());
@@ -55,7 +55,7 @@ TEST(ArgsUtilsDefaults, ReturnsDefaultsWhenNoArgsGiven) {
     EXPECT_FALSE(p.help);
 }
 
-TEST(ArgsUtilsParse, AssignsStringValues) {
+TEST(ArgsUtils_parse_args, assigns_string_values) {
     ArgsUtils utils;
     Argv argv{"--model=llama3", "--embedding_model=nomic", "--prompt=hi there"};
     auto p = utils.parse_args(argv.argc(), argv.argv());
@@ -65,25 +65,25 @@ TEST(ArgsUtilsParse, AssignsStringValues) {
     EXPECT_EQ(p.prompt, "hi there");
 }
 
-TEST(ArgsUtilsParse, SplitsOnFirstEqualsOnly) {
+TEST(ArgsUtils_parse_args, splits_on_first_equals_only) {
     ArgsUtils utils;
     Argv argv{"--prompt=a=b"};
     EXPECT_EQ(utils.parse_args(argv.argc(), argv.argv()).prompt, "a=b");
 }
 
-TEST(ArgsUtilsParse, EmptyValueYieldsEmptyString) {
+TEST(ArgsUtils_parse_args, empty_value_yields_empty_string) {
     ArgsUtils utils;
     Argv argv{"--model="};
     EXPECT_EQ(utils.parse_args(argv.argc(), argv.argv()).model, "");
 }
 
-TEST(ArgsUtilsParse, LastOccurrenceWins) {
+TEST(ArgsUtils_parse_args, last_occurrence_wins) {
     ArgsUtils utils;
     Argv argv{"--model=a", "--model=b"};
     EXPECT_EQ(utils.parse_args(argv.argc(), argv.argv()).model, "b");
 }
 
-TEST(ArgsUtilsParse, IgnoresArgsWithoutEquals) {
+TEST(ArgsUtils_parse_args, ignores_args_without_equals) {
     ArgsUtils utils;
     Argv argv{"--stream", "--model"};
     auto p = utils.parse_args(argv.argc(), argv.argv());
@@ -92,7 +92,7 @@ TEST(ArgsUtilsParse, IgnoresArgsWithoutEquals) {
     EXPECT_EQ(p.model, "gemma3n:latest");
 }
 
-TEST(ArgsUtilsParse, IgnoresUnknownKeys) {
+TEST(ArgsUtils_parse_args, ignores_unknown_keys) {
     ArgsUtils utils;
     Argv argv{"--unknown=x"};
     auto p = utils.parse_args(argv.argc(), argv.argv());
@@ -106,14 +106,14 @@ using BoolCase = std::pair<std::string, BoolField>;
 
 class BoolFlagTest : public testing::TestWithParam<BoolCase> {};
 
-TEST_P(BoolFlagTest, ExactTrueEnablesFlag) {
+TEST_P(BoolFlagTest, exact_true_enables_flag) {
     ArgsUtils utils;
     Argv argv{GetParam().first + "=true"};
     auto p = utils.parse_args(argv.argc(), argv.argv());
     EXPECT_TRUE(p.*GetParam().second);
 }
 
-TEST_P(BoolFlagTest, NonExactTrueValuesLeaveFlagDisabled) {
+TEST_P(BoolFlagTest, non_exact_true_values_leave_flag_disabled) {
     ArgsUtils utils;
     for (const char* val : {"TRUE", "1", "yes", "false"}) {
         Argv argv{GetParam().first + "=" + val};
@@ -122,14 +122,14 @@ TEST_P(BoolFlagTest, NonExactTrueValuesLeaveFlagDisabled) {
     }
 }
 
-INSTANTIATE_TEST_SUITE_P(AllBoolFlags, BoolFlagTest,
+INSTANTIATE_TEST_SUITE_P(AllBool_flags, BoolFlagTest,
                          testing::Values(BoolCase{"--stream", &ParsedArgs::stream}, BoolCase{"--rag", &ParsedArgs::rag},
                                          BoolCase{"--interactive", &ParsedArgs::interactive},
                                          BoolCase{"--dark_theme", &ParsedArgs::dark_theme},
                                          BoolCase{"--skip_embedding", &ParsedArgs::skip_embedding},
                                          BoolCase{"--help", &ParsedArgs::help}));
 
-TEST(ArgsUtilsHelp, DocumentsEveryHandledFlag) {
+TEST(ArgsUtils_help_text, documents_every_handled_flag) {
     ArgsUtils utils;
     const std::string text = utils.help_text();
     for (const char* key : {"--model=", "--embedding_model=", "--prompt=", "--stream=", "--rag=", "--interactive=",
