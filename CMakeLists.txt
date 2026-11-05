@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.20)
 
-project(cpp-workspace VERSION 0.4.3 LANGUAGES CXX)
+project(cpp-workspace VERSION 0.4.4 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,6 +12,15 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 option(CPP_WORKSPACE_BUILD_TESTS "Build unit tests" ON)
+option(ENABLE_COVERAGE "Build with gcov instrumentation" OFF)
+
+if(ENABLE_COVERAGE)
+  if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    message(FATAL_ERROR "ENABLE_COVERAGE requires GCC")
+  endif()
+  add_compile_options(--coverage -O0 -g)
+  add_link_options(--coverage)
+endif()
 
 message(STATUS "Current source dir: ${CMAKE_CURRENT_SOURCE_DIR}")
 file(GLOB_RECURSE CORE_SOURCES CONFIGURE_DEPENDS

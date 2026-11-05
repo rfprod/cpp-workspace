@@ -198,7 +198,7 @@ source .env; \
 
    ```bash
    source .venv/bin/activate; \
-     pip install conan; \
+     pip install conan gcovr; \
      conan --version; \
      conan profile detect --force
    ```

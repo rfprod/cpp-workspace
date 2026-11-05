@@ -21,6 +21,8 @@ show_help() {
     -b DIR, --build-dir DIR Specify build directory (default: build)
     -t, --tests             Build and run unit tests (default: off)
     --no-tests              Build without unit tests (overrides ENABLE_TESTS)
+    --no-run                Builds without running executable (overrides RUN_EXECUTABLE)
+    --coverage              Enable GCC coverage and generate gcovr reports (Debug only, implies --tests)
     --cxx-flags FLAGS       Set CMAKE_CXX_FLAGS (default: -DDEBUG)
     --no-debug-flags        Build without -DDEBUG flag
     --exe-args ARGS         Pass arguments to executable (e.g., '--skip_embedding=true')"
@@ -29,6 +31,8 @@ show_help() {
     BUILD_TYPE        Set build type: Debug or Release (default: Debug)
     CLEAN_BUILD       Set to true to clean before building (default: false)
     ENABLE_TESTS      Set to true to build and run tests (default: false)
+    ENABLE_COVERAGE   Set to true to enable coverage and generate reports (default: false)
+    GCOV_EXECUTABLE   gcov binary matching the GCC version (default: gcov-13)
     CMAKE_CXX_FLAGS   Set C++ compiler flags (default: -DDEBUG)
     EXECUTABLE_ARGS   Arguments to pass to the executable"
 
@@ -40,8 +44,11 @@ show_help() {
     ./tools/shell/build.sh --exe-args '--skip_embedding=true --other-arg=true'  # Pass args to exe
     ./tools/shell/build.sh --tests                                              # Debug build with tests
     ./tools/shell/build.sh --release --tests                                    # Release build with tests
+    ./tools/shell/build.sh --release --tests --no-run                           # Release build with tests without binary run
+    ./tools/shell/build.sh --coverage                                           # Debug build, tests, and coverage report
 
     ENABLE_TESTS=true ./tools/shell/build.sh                                    # Via env var
+    ENABLE_COVERAGE=true ./tools/shell/build.sh                                 # Via env var
 
     CMAKE_CXX_FLAGS='-O3' ./tools/shell/build.sh                                # Via env var"
 }
@@ -51,7 +58,10 @@ BUILD_DIR="build"
 BUILD_TYPE="${BUILD_TYPE:-Debug}"
 CLEAN_BUILD="${CLEAN_BUILD:-false}"
 ENABLE_TESTS="${ENABLE_TESTS:-false}"
+ENABLE_COVERAGE="${ENABLE_COVERAGE:-false}"
+GCOV_EXECUTABLE="${GCOV_EXECUTABLE:-gcov-13}"
 PACKAGE_RELEASE="${PACKAGE_RELEASE:-false}"
+RUN_EXECUTABLE="${RUN_EXECUTABLE:-true}"
 # Additional configuration
 CMAKE_CXX_FLAGS="${CMAKE_CXX_FLAGS:--DDEBUG}"
 EXECUTABLE_ARGS="${EXECUTABLE_ARGS:-}"
@@ -85,6 +95,14 @@ while [[ $# -gt 0 ]]; do
       ;;
     --no-tests)
       ENABLE_TESTS=false
+      shift
+      ;;
+    --no-run)
+      RUN_EXECUTABLE=false
+      shift
+      ;;
+    --coverage)
+      ENABLE_COVERAGE=true
       shift
       ;;
     --cxx-flags)
@@ -212,6 +230,59 @@ check_test_link_for_ncurses_cxx() {
   log_success "Test link line is free of ncurses++"
 }
 
+# Validates prerequisites for coverage and forces tests on, since coverage needs them.
+validate_coverage_setup() {
+  if [ "$BUILD_TYPE" != "Debug" ]; then
+    log_error "Coverage requires a Debug build (-O0 -g). Remove --release or set BUILD_TYPE=Debug."
+    exit 1
+  fi
+
+  if [ "$ENABLE_TESTS" != true ]; then
+    log_warning "Coverage requires tests; enabling tests"
+    ENABLE_TESTS=true
+  fi
+
+  if ! command -v gcovr >/dev/null 2>&1; then
+    log_error "gcovr not found. Install it with: pip install gcovr"
+    exit 1
+  fi
+
+  if ! command -v "$GCOV_EXECUTABLE" >/dev/null 2>&1; then
+    log_error "$GCOV_EXECUTABLE not found. It must match the GCC version used for the build."
+    exit 1
+  fi
+
+  log_success "Coverage tooling validated (gcovr $(gcovr --version | head -n1 | awk '{print $2}'), ${GCOV_EXECUTABLE})"
+}
+
+# Deletes .gcda files so counters from earlier runs don't leak into the report.
+clean_coverage_data() {
+  log_info "Removing stale coverage data (.gcda files)..."
+  find "$BUILD_DIR/$BUILD_TYPE" -name '*.gcda' -delete
+}
+
+# Generates HTML and Cobertura XML coverage reports with gcovr.
+generate_coverage_report() {
+  local COVERAGE_DIR="$BUILD_DIR/$BUILD_TYPE/coverage"
+  mkdir -p "$COVERAGE_DIR"
+
+  log_info "Generating coverage reports..."
+  if gcovr --root . \
+      --object-directory "$BUILD_DIR/$BUILD_TYPE" \
+      --filter 'src/' \
+      --exclude 'tests/' \
+      --gcov-executable "$GCOV_EXECUTABLE" \
+      --print-summary \
+      --xml-pretty --output "$COVERAGE_DIR/coverage.xml" \
+      --html-details "$COVERAGE_DIR/coverage.html"; then
+    log_success "Coverage HTML report: $COVERAGE_DIR/coverage.html"
+    log_success "Coverage Cobertura XML: $COVERAGE_DIR/coverage.xml"
+  else
+    log_error "Coverage report generation failed"
+    exit 1
+  fi
+}
+
 
 # Main build script
 main() {
@@ -230,13 +301,24 @@ main() {
 
   log_info "Version: ${VERSION}, Build: ${BUILD_NUMBER}"
 
+  if [ "$ENABLE_COVERAGE" = true ]; then
+    validate_coverage_setup
+  fi
+
   local TESTS_CMAKE_FLAG
   TESTS_CMAKE_FLAG=OFF
   if [ "$ENABLE_TESTS" = true ]; then
     TESTS_CMAKE_FLAG=ON
   fi
 
+  local COVERAGE_CMAKE_FLAG
+  COVERAGE_CMAKE_FLAG=OFF
+  if [ "$ENABLE_COVERAGE" = true ]; then
+    COVERAGE_CMAKE_FLAG=ON
+  fi
+
   log_info "Enable tests: ${ENABLE_TESTS}, Tests CMake Flag: ${TESTS_CMAKE_FLAG}"
+  log_info "Enable coverage: ${ENABLE_COVERAGE}, Coverage CMake Flag: ${COVERAGE_CMAKE_FLAG}"
 
   # Clean build directory if requested
   if [ "$CLEAN_BUILD" = true ]; then
@@ -256,7 +338,7 @@ main() {
   fi
 
   log_info "Configuring CMake (${BUILD_TYPE})..."
-  if cmake -S . -B "$BUILD_DIR"/"$BUILD_TYPE" -DCMAKE_TOOLCHAIN_FILE="$PWD"/"$BUILD_DIR"/"$BUILD_TYPE"/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DCPP_WORKSPACE_BUILD_TESTS="$TESTS_CMAKE_FLAG" -DCMAKE_CXX_FLAGS="$CMAKE_CXX_FLAGS" -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13; then
+  if cmake -S . -B "$BUILD_DIR"/"$BUILD_TYPE" -DCMAKE_TOOLCHAIN_FILE="$PWD"/"$BUILD_DIR"/"$BUILD_TYPE"/generators/conan_toolchain.cmake -DCMAKE_BUILD_TYPE="$BUILD_TYPE" -DCPP_WORKSPACE_BUILD_TESTS="$TESTS_CMAKE_FLAG" -DENABLE_COVERAGE="$COVERAGE_CMAKE_FLAG" -DCMAKE_CXX_FLAGS="$CMAKE_CXX_FLAGS" -DCMAKE_C_COMPILER=gcc-13 -DCMAKE_CXX_COMPILER=g++-13; then
 
     log_success "CMake configured"
   else
@@ -279,6 +361,10 @@ main() {
       exit 1
     fi
 
+    if [ "$ENABLE_COVERAGE" = true ]; then
+      clean_coverage_data
+    fi
+
     log_info "Running tests..."
     if ctest --test-dir "$BUILD_DIR/$BUILD_TYPE" --output-on-failure; then
       log_success "All tests passed"
@@ -287,6 +373,10 @@ main() {
     fi
 
     check_test_link_for_ncurses_cxx
+
+    if [ "$ENABLE_COVERAGE" = true ]; then
+      generate_coverage_report
+    fi
   else
     log_info "Skipping tests (use --tests to enable)"
   fi
@@ -295,17 +385,21 @@ main() {
   BIN_NAME=cpp-workspace-app
 
   if [ -f "$BUILD_DIR/$BUILD_TYPE/bin/$BIN_NAME" ]; then
-    log_info "Running executable..."
-    load_env_file
-    if [ -n "$EXECUTABLE_ARGS" ]; then
-      # allow splitting of $EXECUTABLE_ARGS to support multiple executable arguments.
-      # shellcheck disable=SC2086
-      "$BUILD_DIR/$BUILD_TYPE/bin/$BIN_NAME" $EXECUTABLE_ARGS
-    else
-      "$BUILD_DIR/$BUILD_TYPE/bin/$BIN_NAME"
-    fi
+    if [ "$RUN_EXECUTABLE" = true ]; then
+      log_info "Running executable..."
+      load_env_file
+      if [ -n "$EXECUTABLE_ARGS" ]; then
+        # allow splitting of $EXECUTABLE_ARGS to support multiple executable arguments.
+        # shellcheck disable=SC2086
+        "$BUILD_DIR/$BUILD_TYPE/bin/$BIN_NAME" $EXECUTABLE_ARGS
+      else
+        "$BUILD_DIR/$BUILD_TYPE/bin/$BIN_NAME"
+      fi
 
-    log_success "Executable ran successfully"
+      log_success "Executable ran successfully"
+    else
+      log_info "Executable exists, but RUN_EXECUTABLE=$RUN_EXECUTABLE (remove --no-run to enable)"
+    fi
   else
     log_warning "Executable not found at $BUILD_DIR/bin/$BIN_NAME"
   fi
@@ -358,6 +452,7 @@ EOF
   echo "  Build Number: ${BUILD_NUMBER}"
   echo "  Build Type: ${BUILD_TYPE}"
   echo "  Build Directory: ${BUILD_DIR}"
+  echo "  Coverage: ${ENABLE_COVERAGE}"
   [ "$PACKAGE_RELEASE" = true ] && echo "  Artifacts: release-${ARTIFACT_VERSION}.{tar.gz,zip}"
   echo ""
 }

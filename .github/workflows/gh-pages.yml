@@ -25,6 +25,10 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v7
 
+      - name: Workspace cache
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: ./.github/actions/workspace-cache
+
       - name: Install Doxygen and Graphviz
         run: |
           sudo apt-get update
@@ -66,6 +70,31 @@ jobs:
           # Copy Doxygen HTML with diagrams into the Sphinx site
           cp -r build/doxygen/html/* build/site/api/ || true
 
+          deactivate
+
+      - name: Install C++ compiler and build tools
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake git python3-pip clang-format clang-tidy cppcheck
+          sudo apt-get install -y libcurl4-openssl-dev
+
+      - name: Install Conan and gcovr
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          source .venv/bin/activate
+          pip install conan gcovr
+          conan --version
+          conan profile detect --force
+          deactivate
+
+      - name: Build unit tests with coverage and generate the report
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        run: |
+          source .venv/bin/activate
+          bash ./tools/shell/build.sh --clean --tests --coverage --no-run
+          mkdir -p build/site/coverage
+          cp -r build/Debug/coverage/. build/site/coverage/
           deactivate
 
       - name: Upload downloadable site artifact
