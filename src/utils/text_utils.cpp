@@ -67,6 +67,9 @@ std::vector<std::string> TextUtils::wrap_text(const std::string& text, const int
     }
 
     if (!remaining.empty()) {
+        // The first character is never a space here, so find_last_not_of always finds
+        // a non-space character and the final line is never empty.
+        remaining.erase(remaining.find_last_not_of(' ') + 1);
         result.push_back(remaining);
     }
 
@@ -249,9 +252,14 @@ std::vector<std::string> TextUtils::split_text(const std::string& text, const si
         if (sentence_start < end) {
             next = sentence_start;
         } else {
-            // No sentence start available: snap forward to the start of a word.
-            while (next < end && !is_space(text[next - 1])) {
-                next += 1;
+            // Snap forward to the first word start inside [next, end).
+            // If there is none, keep the overlap start so the overlap is honored.
+            size_t word_start = next;
+            while (word_start < end && !is_space(text[word_start - 1])) {
+                word_start += 1;
+            }
+            if (word_start < end) {
+                next = word_start;
             }
         }
 
