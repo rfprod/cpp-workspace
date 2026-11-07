@@ -8,7 +8,46 @@
 #include <ncurses.h>
 #include <sstream>
 
-UserInterface* UserInterface::instance = nullptr;
+std::weak_ptr<UserInterface> UserInterface::instance;
+
+volatile sig_atomic_t UserInterface::resize_flag = 0;
+
+volatile sig_atomic_t UserInterface::interrupt_flag = 0;
+
+/**
+ * Creates a UserInterface instance with the light theme as the default color scheme.
+ *
+ * @return: Shared pointer to the newly created UserInterface, also stored in the static instance member.
+ *
+ * Delegates to create(bool) with dark_theme set to false, so use_dark_theme is initialized to the light theme.
+ * Any previously stored instance is replaced by the new one.
+ *
+ * Note: This overload does not call init_ncurses(). The caller must invoke init_ncurses() explicitly on the returned
+ * instance to set up the terminal, color pairs, and input handling.
+ */
+std::shared_ptr<UserInterface> UserInterface::create() {
+    return create(false);
+}
+
+/**
+ * Creates a UserInterface instance with a caller-specified color theme preference and registers it as the singleton
+ * instance.
+ *
+ * @param dark_theme: Boolean flag to select color scheme; true for dark theme, false for light theme.
+ * @return: Shared pointer to the newly created UserInterface, also stored in the static instance member.
+ *
+ * Allocates a new UserInterface through the constructor, passing dark_theme so that use_dark_theme is set during
+ * construction. Assigns the new object to instance, replacing any previously stored value. Returns the shared pointer
+ * to the caller.
+ *
+ * Note: This method does not call init_ncurses(). The caller must invoke init_ncurses() explicitly on the returned
+ * instance to set up the terminal, color pairs, and input handling.
+ */
+std::shared_ptr<UserInterface> UserInterface::create(bool dark_theme) {
+    std::shared_ptr<UserInterface> ui(new UserInterface(dark_theme));
+    instance = ui;
+    return ui;
+}
 
 /**
  * Semantic color pair identifiers for terminal UI rendering.
@@ -159,13 +198,6 @@ void UserInterface::init_ncurses(void) {
     }
 
     if (has_colors()) {
-#ifdef DEBUG
-        if (this->is_running() == false) {
-            UserInterface::print_message_noninteractive(
-                std::format("\t[DEBUG] Checking theme - use_dark_theme = {}\n", this->use_dark_theme));
-        }
-#endif
-
         if (this->use_dark_theme == true) {
             this->init_dark_theme();
         } else {
@@ -435,7 +467,7 @@ void UserInterface::start_render_thread(void) {
 void UserInterface::stop_render_thread(void) {
     this->thread_running = false;
     this->cv_redraw.notify_one();
-    if (this->render_thread.joinable()) {
+    if (this->render_thread.joinable() && this->render_thread.get_id() != std::this_thread::get_id()) {
         this->render_thread.join();
     }
 }
@@ -460,9 +492,14 @@ void UserInterface::render_loop(void) {
         // Wait for redraw request or timeout (100ms)
         this->cv_redraw.wait_for(lock, std::chrono::milliseconds(1500), [this] { return this->should_redraw.load(); });
 
+        if (UserInterface::interrupt_flag) {
+            this->end_session();
+            break;
+        }
+
         // Handle resize (under lock)
-        if (this->resize_flag) {
-            this->resize_flag = 0;
+        if (UserInterface::resize_flag) {
+            UserInterface::resize_flag = 0;
             endwin();
             refresh();
             this->update_layout();
@@ -490,22 +527,15 @@ void UserInterface::render_loop(void) {
 /**
  * Constructs a UserInterface instance and initializes member variables.
  *
- * Initializes atomic flags resize_flag and running to 0 (false/inactive).
  * Initializes input_cursor_x to 0 (cursor at leftmost position).
  * Initializes layout struct to default-constructed values (all fields zeroed/default).
  * Sets use_dark_theme to true, establishing dark theme as the default color scheme preference.
- *
- * Stores a static instance pointer (UserInterface::instance = this) to enable the singleton pattern,
- * allowing static methods and signal handlers to access the active UI instance.
- *
- * Emits debug output to verify use_dark_theme initialization state.
  *
  * Note: This constructor performs only member initialization and singleton registration.
  * Full ncurses initialization (terminal setup, color pair configuration, input handling) is deferred
  * to init_ncurses(), which must be called explicitly after construction to establish the UI environment.
  */
-UserInterface::UserInterface() : resize_flag(0), running(0), input_cursor_x(0), layout({}), use_dark_theme(true) {
-    UserInterface::instance = this;
+UserInterface::UserInterface() : input_cursor_x(0), layout({}), use_dark_theme(true) {
 }
 
 /**
@@ -513,24 +543,16 @@ UserInterface::UserInterface() : resize_flag(0), running(0), input_cursor_x(0), 
  *
  * @param dark_theme: Boolean flag to select color scheme; true for dark theme, false for light theme.
  *
- * Initializes atomic flags resize_flag and running to 0 (false/inactive).
  * Initializes input_cursor_x to 0 (cursor at leftmost position).
  * Initializes layout struct to default-constructed values (all fields zeroed/default).
  * Sets use_dark_theme to the caller-provided dark_theme value, establishing the preferred
  * color scheme that will be applied during init_ncurses().
  *
- * Stores a static instance pointer (UserInterface::instance = this) to enable the singleton pattern,
- * allowing static methods and signal handlers to access the active UI instance.
- *
- * Emits debug output to verify use_dark_theme initialization state.
- *
  * Note: This constructor performs only member initialization and singleton registration.
  * Full ncurses initialization (terminal setup, color pair configuration, input handling) is deferred
  * to init_ncurses(), which must be called explicitly after construction to establish the UI environment.
  */
-UserInterface::UserInterface(bool dark_theme)
-    : resize_flag(0), running(0), input_cursor_x(0), layout({}), use_dark_theme(dark_theme) {
-    UserInterface::instance = this;
+UserInterface::UserInterface(bool dark_theme) : input_cursor_x(0), layout({}), use_dark_theme(dark_theme) {
 }
 
 /**
@@ -548,27 +570,40 @@ UserInterface::UserInterface(bool dark_theme)
  * Note: Should be called when the UI environment is no longer needed, typically before program termination.
  */
 UserInterface::~UserInterface() {
-    this->cleanup_ncurses();
-    UserInterface::instance = nullptr;
+    this->end_session();
 }
 
 /**
  * Queries the current running state of the UI application.
  *
- * @return Boolean indicating whether the application is actively running.
+ * @return Boolean indicating whether the rendering thread is actively running.
  *
- * - true if running == 1 (active/running);
+ * - true if thread_running == 1 (active/running);
  *
- * - false if running == 0 (inactive/stopped).
+ * - false if thread_running == 0 (inactive/stopped).
  *
  * Performs a thread-safe atomic read of the running flag, allowing safe concurrent
  * queries from multiple threads without synchronization overhead.
  *
- * Typically used in main event loops or background threads to determine whether
- * to continue processing, poll for input, or exit gracefully.
+ * Typically used to determine what output method to use for debug output.
  */
 bool UserInterface::is_running() {
-    return this->running == 1;
+    return this->thread_running == 1;
+}
+
+/**
+ * Checks whether a UserInterface is attached and currently running.
+ *
+ * Used throughout the application to choose between UI-based output and
+ * non-interactive output (stdout and stderr). Returns false when no
+ * UserInterface is set, so callers take the non-interactive path.
+ *
+ * @param user_interface The UserInterface to check. May be nullptr.
+ *
+ * @return true if user_interface is non-null and its UI is running, false otherwise.
+ */
+bool UserInterface::ui_running(const std::shared_ptr<UserInterface>& user_interface) {
+    return user_interface != nullptr && user_interface->is_running();
 }
 
 /**
@@ -593,9 +628,7 @@ bool UserInterface::is_running() {
  * signal-safe function violations.
  */
 void UserInterface::handle_resize(int sig) {
-    if (UserInterface::instance) {
-        UserInterface::instance->resize_flag = 1;
-    }
+    UserInterface::resize_flag = 1;
 
     signal(SIGWINCH, UserInterface::handle_resize);
 }
@@ -605,30 +638,22 @@ void UserInterface::handle_resize(int sig) {
  *
  * @param sig Signal number (SIGINT); unused but required by signal handler signature.
  *
- * Handles graceful shutdown triggered by user interrupt (Ctrl+C). Checks if the singleton
- * UserInterface instance exists. If it does, performs immediate cleanup: sets the atomic
- * running flag to 0 to signal the main event loop to stop, calls endwin() to restore
- * terminal settings and prevent terminal corruption, and exits with EXIT_SUCCESS.
+ * Requests a graceful shutdown when the user presses Ctrl+C. The handler only sets the
+ * volatile sig_atomic_t interrupt_flag, which is the only operation guaranteed to be safe
+ * inside a signal handler. It does not call ncurses functions, lock mutexes, touch the
+ * singleton instance, or call exit().
  *
- * Ensures the terminal is properly restored to its original state even when the program
- * terminates abnormally via interrupt. This prevents the terminal from being left in a
- * curses-altered state (e.g., hidden cursor, no echo) after exit.
+ * The render thread checks interrupt_flag on each iteration, sets thread_running to false,
+ * and exits its loop. The thread then ends before the UserInterface destructor runs, which
+ * performs the ncurses cleanup (endwin()) and restores the terminal to its original state.
  *
- * Provides defensive null-check of the singleton instance in case the handler is invoked
- * after the UI is destroyed.
+ * Because the handler does not terminate the process, destructors run normally and resources
+ * are released through the usual RAII path.
  *
- * Does not require signal re-registration, as SIGINT handler persists across invocations.
- * Terminates the process immediately with exit(); does not return to caller.
- *
- * Enables clean shutdown with guaranteed terminal restoration and prevents resource leaks
- * by terminating the entire process rather than returning to potentially inconsistent state.
+ * Does not return a value and does not exit the process.
  */
 void UserInterface::handle_interrupt(int sig) {
-    if (UserInterface::instance) {
-        UserInterface::instance->running = 0;
-        endwin();
-        exit(EXIT_SUCCESS);
-    }
+    UserInterface::interrupt_flag = 1;
 }
 
 /**
@@ -636,13 +661,10 @@ void UserInterface::handle_interrupt(int sig) {
  *
  * Performs full initialization pipeline: calls init_ncurses() to set up the ncurses
  * library, terminal settings, and signal handlers; calls draw_ui() to render the initial
- * full-terminal Unicode box border; sets the atomic running flag to 1 to signal active
- * state; and calls start_render_thread() to spawn the background rendering thread.
+ * full-terminal Unicode box border; and calls start_render_thread() to spawn the background rendering thread.
  *
  * The rendering thread continuously redraws the UI (output area, input area, spinner)
- * in response to state changes and terminal resize events (resize_flag). The running
- * flag controls the render thread's event loop; setting it to 1 enables the thread to
- * proceed; setting it to 0 causes the thread to exit gracefully.
+ * in response to state changes and terminal resize events (resize_flag).
  *
  * No parameters; operates on the current UserInterface instance state.
  *
@@ -663,15 +685,13 @@ void UserInterface::run(void) {
 
     this->draw_ui();
 
-    this->running = 1;
-
     this->start_render_thread();
 }
 
 /**
  * Gracefully terminates the UserInterface subsystem and exits the application.
  *
- * @param exit_code Exit status code passed to exit(); typically EXIT_SUCCESS (0) or EXIT_FAILURE (1).
+ * @param code Exit status code passed to exit(); typically EXIT_SUCCESS (0) or EXIT_FAILURE (1).
  *
  * Performs an orderly shutdown sequence: prints a farewell message ("🏁 The session has ended."),
  * sleeps for 1000 milliseconds to ensure the message is visible on screen, stops the background
@@ -693,16 +713,18 @@ void UserInterface::run(void) {
  *
  * Enables clean, user-facing shutdown with guaranteed terminal restoration and thread cleanup.
  */
-void UserInterface::end_session(int exit_code) {
+void UserInterface::end_session(int code) {
     this->print("🏁 The session has ended.");
 
     napms(1000);
 
     this->stop_render_thread();
 
-    this->cleanup_ncurses();
+    if (!this->terminal_restored.exchange(true)) {
+        this->cleanup_ncurses();
+    }
 
-    exit(exit_code);
+    std::exit(code);
 }
 
 /**
@@ -880,7 +902,7 @@ void UserInterface::select_model(const std::vector<std::string>& models, std::st
 
     if (models.size() == 0) {
         this->print_error("There are no available models to select from.\n");
-        exit(1);
+        std::exit(EXIT_FAILURE);
     }
 
     this->request_redraw();
@@ -942,7 +964,7 @@ void UserInterface::select_model_noninteractive(const std::vector<std::string>& 
 
     if (models.size() == 0) {
         UserInterface::print_error_noninteractive("There are no available models to select from.\n");
-        exit(1);
+        std::exit(EXIT_FAILURE);
     }
 
     while (read_result != 1 || index < 0 || index >= models.size()) {
@@ -1022,7 +1044,7 @@ bool UserInterface::next_prompt_noninteractive(std::string* prompt) {
     printf("⏳ Type your prompt (q/Q to quit): ");
     if (!std::getline(std::cin, *prompt, '\n')) {
         fprintf(stderr, "Error reading user input.\n");
-        exit(1);
+        std::exit(EXIT_FAILURE);
     }
 
     if (*prompt == "q" || *prompt == "Q") {

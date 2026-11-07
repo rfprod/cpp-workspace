@@ -91,5 +91,5 @@ const char* ArgsUtils::help_text() {
 void ArgsUtils::print_help() {
     printf("%s", this->help_text());
 
-    std::exit(0);
+    std::exit(EXIT_SUCCESS);
 }

@@ -60,29 +60,30 @@ class OllamaClient {
     /**
      * Pointer to the Ollama Client configuraion.
      */
-    OllamaClientConfig* config;
+    std::shared_ptr<OllamaClientConfig> config;
 
     /**
      * Pointer to the UserInterface for displaying messages and errors.
      */
-    UserInterface* ui;
+    std::shared_ptr<UserInterface> ui;
 
     /**
      * Pointer to the CURL wrapper containing pre-configured internal logic.
      */
-    CurlUtils* curl;
+    std::shared_ptr<CurlUtils> curl;
 
     /**
      * Pointer to the SystemUtils for processing `system()` calls.
      */
-    SystemUtils* system_utils;
+    std::shared_ptr<SystemUtils> system_utils;
 
     void check_ollama();
 
     std::string trim_response(std::string response);
 
   public:
-    explicit OllamaClient(OllamaClientConfig* config, UserInterface* ui, CurlUtils* curl, SystemUtils* system_utils);
+    explicit OllamaClient(std::shared_ptr<OllamaClientConfig> config, std::shared_ptr<UserInterface> ui,
+                          std::shared_ptr<CurlUtils> curl, std::shared_ptr<SystemUtils> system_utils);
 
     ~OllamaClient();
 

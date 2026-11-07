@@ -10,8 +10,7 @@
  * @note The SystemUtils class does not take ownership of the ui pointer;
  *       the caller is responsible for managing the UserInterface lifetime.
  */
-SystemUtils::SystemUtils(UserInterface* ui) {
-    this->ui = ui;
+SystemUtils::SystemUtils(std::shared_ptr<UserInterface> ui) : ui(ui) {
 }
 
 /**
@@ -30,7 +29,7 @@ SystemUtils::SystemUtils(UserInterface* ui) {
  * - Abnormal termination: displays "Command terminated abnormally" and terminates the program.
  *
  * Output routing:
- * - If UserInterface is in interactive mode (is_running() == true), errors are sent via ui->print_error().
+ * - If UserInterface is in interactive mode, errors are sent via ui->print_error().
  * - Otherwise, errors are printed non-interactively via UserInterface::print_message_noninteractive().
  *
  * @param status The wait status code returned from a system() call.
@@ -45,7 +44,7 @@ void SystemUtils::catch_error(int status) {
     std::string message{};
     if (status == -1) {
         message = "system() failed.\n";
-        if (this->ui->is_running() == false) {
+        if (UserInterface::ui_running(this->ui) == false) {
             UserInterface::print_error_noninteractive(message);
         } else {
             this->ui->print_error(message);
@@ -55,20 +54,22 @@ void SystemUtils::catch_error(int status) {
         int exit_code = WEXITSTATUS(status);
         if (exit_code != 0) {
             message = std::format("Command failed with exit code {}.\n", exit_code);
-            if (this->ui->is_running() == false) {
+            if (UserInterface::ui_running(this->ui) == false) {
                 UserInterface::print_error_noninteractive(message);
+                std::exit(EXIT_FAILURE);
             } else {
                 this->ui->print_error(message);
+                this->ui->end_session(EXIT_FAILURE);
             }
-            exit(1);
         }
     } else {
         message = std::format("Command terminated abnormally.\n");
-        if (this->ui->is_running() == false) {
+        if (UserInterface::ui_running(this->ui) == false) {
             UserInterface::print_error_noninteractive(message);
+            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
+            this->ui->end_session(EXIT_FAILURE);
         }
-        exit(1);
     }
 }

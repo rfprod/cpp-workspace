@@ -14,35 +14,36 @@ class RetrievingUtils {
     /**
      * Pointer to the Retrieving Utils configuration.
      */
-    RetrievingUtilsConfig* config;
+    std::shared_ptr<RetrievingUtilsConfig> config;
 
     /**
      * Pointer to the UserInterface for displaying messages and errors.
      */
-    UserInterface* ui;
+    std::shared_ptr<UserInterface> ui;
 
     /**
      * Pointer to the CURL wrapper containing pre-configured internal logic.
      */
-    CurlUtils* curl;
+    std::shared_ptr<CurlUtils> curl;
 
     /**
      * Pointer to the OllamaClient for LLM ops.
      */
-    OllamaClient* ollama_client;
+    std::shared_ptr<OllamaClient> ollama_client;
 
     /**
      * Pointer to the QdrantClient for vector database ops.
      */
-    QdrantClient* storage_client;
+    std::shared_ptr<QdrantClient> storage_client;
 
     std::vector<std::string> retrieve(const std::string& question);
 
     void generate_answer(const std::string& question, const std::vector<std::string>& documents);
 
   public:
-    RetrievingUtils(RetrievingUtilsConfig* config, UserInterface* ui, CurlUtils* curl, OllamaClient* ollama_client,
-                    QdrantClient* storage_client);
+    RetrievingUtils(std::shared_ptr<RetrievingUtilsConfig> config, std::shared_ptr<UserInterface> ui,
+                    std::shared_ptr<CurlUtils> curl, std::shared_ptr<OllamaClient> ollama_client,
+                    std::shared_ptr<QdrantClient> storage_client);
 
     void run(void);
 };

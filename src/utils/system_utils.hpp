@@ -8,10 +8,10 @@ class SystemUtils {
      * Pointer to the UserInterface for displaying messages and errors.
      * Used for both CLI and interactive UI output.
      */
-    UserInterface* ui;
+    std::shared_ptr<UserInterface> ui;
 
   public:
-    explicit SystemUtils(UserInterface* ui);
+    explicit SystemUtils(std::shared_ptr<UserInterface> ui);
 
     void catch_error(int status);
 };

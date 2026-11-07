@@ -14,7 +14,7 @@
  */
 struct WebContent {
     std::string read_buffer;
-    char error_buffer[CURL_ERROR_SIZE];
+    char error_buffer[CURL_ERROR_SIZE] = {};
     long status = 0;
 };
 
@@ -44,19 +44,19 @@ class CurlUtils {
     /**
      * CURL handle for HTTP requests. Initialized in init_curl().
      */
-    CURL* curl;
+    std::unique_ptr<CURL, decltype(&curl_easy_cleanup)> curl{nullptr, curl_easy_cleanup};
 
     /**
      * CURL headers list for HTTP requests (Content-Type, etc.).
      * Allocated in query methods and freed after each request.
      */
-    struct curl_slist* headers;
+    std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)> headers{nullptr, curl_slist_free_all};
 
     /**
      * Pointer to the UserInterface for displaying messages and errors.
      * Used for both CLI and interactive UI output.
      */
-    UserInterface* ui;
+    std::shared_ptr<UserInterface> ui;
 
     /**
      * Progress spinner for visual feedback during network operations.
@@ -67,6 +67,8 @@ class CurlUtils {
     void initialize(void);
 
     void cleanup(void);
+
+    void add_header(curl_slist*& headers, const std::string& line);
 
     long check_service_status(const std::string& url, const std::map<std::string, std::string>& extra_headers = {},
                               long timeout_seconds = 5L);
@@ -80,7 +82,7 @@ class CurlUtils {
     std::function<void(const std::string&)> stream_callback;
 
   public:
-    explicit CurlUtils(UserInterface* ui);
+    explicit CurlUtils(std::shared_ptr<UserInterface> ui);
 
     ~CurlUtils();
 

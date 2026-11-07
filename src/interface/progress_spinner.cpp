@@ -25,7 +25,8 @@ ProgressSpinner::ProgressSpinner() : ui(nullptr), active(false) {
  * @note The UserInterface pointer must remain valid for the lifetime of
  *       the ProgressSpinner object.
  */
-ProgressSpinner::ProgressSpinner(UserInterface* user_interface, bool activate) : ui(user_interface), active(false) {
+ProgressSpinner::ProgressSpinner(std::shared_ptr<UserInterface> user_interface, bool activate)
+    : ui(user_interface), active(false) {
     if (activate && ui != nullptr) {
         start();
     }
@@ -58,7 +59,7 @@ void ProgressSpinner::start() {
     }
     this->active = true;
 
-    if (this->ui == nullptr || this->ui->is_running() == false) {
+    if (this->ui == nullptr || UserInterface::ui_running(this->ui) == false) {
         this->spinner_thread = std::thread([this]() {
             const char spinner_chars[] = {'|', '/', '-', '\\'};
             int i = 0;
@@ -113,7 +114,7 @@ void ProgressSpinner::stop() {
  * @note This method is called frequently by CURL; keep it lightweight.
  */
 int ProgressSpinner::progress_callback_impl(curl_off_t dltotal, curl_off_t dlnow) {
-    if (this->ui == nullptr || !this->ui->is_running()) {
+    if (this->ui == nullptr || !UserInterface::ui_running(this->ui)) {
         const char spinner_chars[] = {'|', '/', '-', '\\'};
 
         if (dltotal > 0) {
