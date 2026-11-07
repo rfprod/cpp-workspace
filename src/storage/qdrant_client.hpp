@@ -54,17 +54,17 @@ class QdrantClient {
      * Pointer to the UserInterface for displaying messages and errors.
      * Used for both CLI and interactive UI output.
      */
-    UserInterface* ui;
+    std::shared_ptr<UserInterface> ui;
 
     /**
      * Pointer to the SystemUtils for processing `system()` calls.
      */
-    SystemUtils* system_utils;
+    std::shared_ptr<SystemUtils> system_utils;
 
     /**
      * A CURL wrapper containing pre-configured internal logic.
      */
-    CurlUtils* curl;
+    std::shared_ptr<CurlUtils> curl;
 
     void setup();
 
@@ -77,7 +77,8 @@ class QdrantClient {
     void create_collection(const std::string& collection_name, size_t vector_size);
 
   public:
-    explicit QdrantClient(UserInterface* ui, CurlUtils* curl, SystemUtils* system_utils);
+    explicit QdrantClient(std::shared_ptr<UserInterface> ui, std::shared_ptr<CurlUtils> curl,
+                          std::shared_ptr<SystemUtils> system_utils);
 
     ~QdrantClient();
 

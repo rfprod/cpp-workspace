@@ -20,7 +20,7 @@ class ProgressSpinner {
     /**
      * Pointer to the associated UserInterface, or nullptr for manual mode.
      */
-    UserInterface* ui;
+    std::shared_ptr<UserInterface> ui;
 
     /**
      * Flag indicating whether the spinner is currently active.
@@ -40,7 +40,7 @@ class ProgressSpinner {
   public:
     ProgressSpinner();
 
-    explicit ProgressSpinner(UserInterface* user_interface, bool activate = false);
+    explicit ProgressSpinner(std::shared_ptr<UserInterface> user_interface, bool activate = false);
 
     ~ProgressSpinner();
 

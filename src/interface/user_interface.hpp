@@ -66,10 +66,10 @@ class UserInterface {
 
     // User Interface state.
 
-    volatile sig_atomic_t resize_flag;
-    volatile sig_atomic_t running;
+    static volatile sig_atomic_t resize_flag;
+    static volatile sig_atomic_t interrupt_flag;
     // A pointer to the user interface instance.
-    static UserInterface* instance;
+    static std::weak_ptr<UserInterface> instance;
 
     // Layout state.
     struct Layout layout;
@@ -87,6 +87,8 @@ class UserInterface {
     std::condition_variable cv_redraw;
     std::atomic<bool> should_redraw{true};
     std::atomic<bool> thread_running{false};
+
+    std::atomic<bool> terminal_restored{false};
 
     // Spinner state.
     std::atomic<bool> spinner_active{false};
@@ -139,7 +141,13 @@ class UserInterface {
 
     ~UserInterface();
 
+    static std::shared_ptr<UserInterface> create();
+
+    static std::shared_ptr<UserInterface> create(bool dark_theme);
+
     bool is_running();
+
+    static bool ui_running(const std::shared_ptr<UserInterface>& user_interface);
 
     static void handle_resize(int sig);
 
@@ -147,7 +155,7 @@ class UserInterface {
 
     void run(void);
 
-    void end_session(int exit_code);
+    void end_session(int code = EXIT_SUCCESS);
 
     void print_args(const std::string& model, const std::string& embedding_model, const std::string& prompt,
                     bool stream, bool rag, bool interactive, bool dark_theme, bool skip_embedding);

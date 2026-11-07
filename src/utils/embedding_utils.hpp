@@ -9,25 +9,26 @@ class EmbeddingUtils {
     /**
      * Pointer to the UserInterface for displaying messages and errors.
      */
-    UserInterface* ui;
+    std::shared_ptr<UserInterface> ui;
 
     /**
      * Pointer to the CURL wrapper containing pre-configured internal logic.
      */
-    CurlUtils* curl;
+    std::shared_ptr<CurlUtils> curl;
 
     /**
      * Pointer to the OllamaClient for LLM ops.
      */
-    OllamaClient* ollama_client;
+    std::shared_ptr<OllamaClient> ollama_client;
 
     /**
      * Pointer to the QdrantClient for vector database ops.
      */
-    QdrantClient* storage_client;
+    std::shared_ptr<QdrantClient> storage_client;
 
   public:
-    EmbeddingUtils(UserInterface* ui, CurlUtils* curl, OllamaClient* ollama_client, QdrantClient* storage_client);
+    EmbeddingUtils(std::shared_ptr<UserInterface> ui, std::shared_ptr<CurlUtils> curl,
+                   std::shared_ptr<OllamaClient> ollama_client, std::shared_ptr<QdrantClient> storage_client);
 
     void create_embedings(const std::vector<std::string>& urls);
 };

@@ -23,30 +23,53 @@ using nlohmann::json_abi_v3_11_2::json;
  *
  * @note Calls check_ollama() during construction. Exits if Ollama is not found.
  */
-OllamaClient::OllamaClient(OllamaClientConfig* config, UserInterface* ui, CurlUtils* curl, SystemUtils* system_utils) {
+OllamaClient::OllamaClient(std::shared_ptr<OllamaClientConfig> config, std::shared_ptr<UserInterface> ui,
+                           std::shared_ptr<CurlUtils> curl, std::shared_ptr<SystemUtils> system_utils)
+    : config(config), ui(ui), curl(curl), system_utils(system_utils) {
     this->urls = {
         generate_url : "http://localhost:11434/api/generate",
         tags_url : "http://localhost:11434/api/tags",
         embed_url : "http://localhost:11434/api/embed"
     };
 
-    this->config = config;
-    this->curl = curl;
-    this->ui = ui;
-    this->system_utils = system_utils;
-
     this->check_ollama();
 
-    if (ui->is_running() == false) {
+    if (UserInterface::ui_running(this->ui) == false) {
         UserInterface::print_message_noninteractive("\n");
     }
 }
 
+/**
+ * Destroys the OllamaClient instance and clears the Ollama history file.
+ *
+ * Runs a shell command that overwrites ~/.ollama/history with an empty string, truncating its contents.
+ * Passes the return status of the shell command to system_utils->catch_error() for handling.
+ *
+ * Note: This destructor depends on system_utils remaining valid for the duration of destruction, and it relies on
+ * the shell to expand the ~ path. Because it runs a shell command, it will also fail silently in environments
+ * where system() is unavailable or where the history file does not exist.
+ */
 OllamaClient::~OllamaClient() {
     int status = system("echo \"\" > ~/.ollama/history");
     this->system_utils->catch_error(status);
 }
 
+/**
+ * Retrieves a configuration value by property name as a const reference of the requested type.
+ *
+ * @tparam T: Type of the configuration value to return. Supported types are std::string for "model", "embedding_model",
+ * and "prompt", and bool for "stream".
+ * @param property_name: Name of the configuration property to look up.
+ * @return: Const reference to the matching member of config, valid for as long as config is alive.
+ * @throws std::runtime_error: If property_name is not a supported property, or if T does not match the property's type.
+ *
+ * Compares property_name against each supported property in turn. For a matching name, returns a reference to the
+ * corresponding config member only when T matches that member's type. The type checks are resolved at compile time
+ * with if constexpr, so each instantiation contains only the branch for its type.
+ *
+ * Note: If the name matches but T does not, control falls through to the remaining checks and ends at the exception.
+ * The returned reference refers into config, so it must not outlive the OllamaClient instance.
+ */
 template <typename T> const T& OllamaClient::get_config_value(const std::string& property_name) const {
     if (property_name == "model") {
         if constexpr (std::is_same_v<T, std::string>) {
@@ -77,6 +100,20 @@ template <typename T> const T& OllamaClient::get_config_value(const std::string&
 template const std::string& OllamaClient::get_config_value<std::string>(const std::string&) const;
 template const bool& OllamaClient::get_config_value<bool>(const std::string&) const;
 
+/**
+ * Retrieves a URL value by property name as a const reference to a std::string.
+ *
+ * @param property_name: Name of the URL property to look up; supported values are "generate_url" and "embed_url".
+ * @return: Const reference to the matching URL string stored in the urls member, valid for as long as this OllamaClient
+ * instance is alive.
+ * @throws std::runtime_error: If property_name is not a supported URL property.
+ *
+ * Compares property_name against "generate_url" and then "embed_url", returning a reference to the corresponding field
+ * of urls on a match.
+ *
+ * Note: The returned reference refers into urls, so it must not outlive the OllamaClient instance. Unlike
+ * get_config_value(), this method has no type parameter because every URL property is a std::string.
+ */
 const std::string& OllamaClient::get_url_value(const std::string& property_name) const {
     if (property_name == "generate_url") {
         return this->urls.generate_url;
@@ -90,7 +127,7 @@ const std::string& OllamaClient::get_url_value(const std::string& property_name)
 }
 
 /**
- * Verifies that the Ollama binary is available on the system.
+ * Verifies that the `is available on the system.
  *
  * Uses the `which ollama` command to check if Ollama is in the PATH.
  * - If found: displays a checkmark and continues.
@@ -106,16 +143,16 @@ void OllamaClient::check_ollama() {
     if (system("which ollama > /dev/null 2>&1")) {
         message = "Ollama binary does not exist.\nInstallation instructions: "
                   "https://docs.ollama.com/linux\n";
-        if (this->ui->is_running() == false) {
+        if (UserInterface::ui_running(this->ui) == false) {
             UserInterface::print_error_noninteractive(message);
-            exit(0);
+            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
             this->ui->end_session(EXIT_FAILURE);
         }
     } else {
         message = "Ollama binary exists.\n";
-        if (this->ui->is_running() == false) {
+        if (UserInterface::ui_running(this->ui) == false) {
             UserInterface::print_success_noninteractive(message);
         } else {
             this->ui->print_success(message);
@@ -157,7 +194,7 @@ void OllamaClient::process_response(std::string response) {
     try {
         json response_json = json::parse(response);
 
-        if (this->ui->is_running() == false) {
+        if (UserInterface::ui_running(this->ui) == false) {
             std::string message = std ::format(
                 "🦙 llama:\n{}\n---\n", this->trim_response(response_json["response"].get<std::string>()).c_str());
             UserInterface::print_message_noninteractive(message);
@@ -168,9 +205,9 @@ void OllamaClient::process_response(std::string response) {
         }
     } catch (const json::exception& err) {
         std::string message = std::format("JSON parse error: {}\n", err.what());
-        if (this->ui->is_running() == false) {
+        if (UserInterface::ui_running(this->ui) == false) {
             UserInterface::print_error_noninteractive(message);
-            exit(1);
+            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
             this->ui->end_session(EXIT_FAILURE);
@@ -178,9 +215,28 @@ void OllamaClient::process_response(std::string response) {
     }
 }
 
+/**
+ * Parses one line of a streamed Ollama response and displays its text fragment.
+ *
+ * @param line: One JSON-encoded chunk from the streaming response, expected to contain a "response" string and a "done"
+ * boolean.
+ *
+ * Parses line as JSON and extracts the "response" text fragment. A static flag tracks whether this is the first chunk
+ * of the current response. The first chunk starts a new message entry, and later chunks are appended to it. The text is
+ * shown through the UI when it is running, or printed non-interactively otherwise. When the "done" field is true, the
+ * flag is reset so the next response starts a new entry, and the method returns.
+ *
+ * Parse failures and other json::exception errors are caught and reported through print_error_noninteractive(),
+ * including the error ID and the offending line.
+ *
+ * Note: When compiled with DEBUG defined, the first 100 characters of each line are logged if the UI is not running.
+ * The first_chunk flag is static, so it is shared by all OllamaClient instances. If a stream ends or fails to parse
+ * before a chunk with "done" set to true, the flag is not reset and the next response will be appended to the previous
+ * message.
+ */
 void OllamaClient::process_response_stream(const std::string& line) {
 #ifdef DEBUG
-    if (this->ui->is_running() == false) {
+    if (UserInterface::ui_running(this->ui) == false) {
         UserInterface::print_message_noninteractive(
             std::format("\t[DEBUG] process_response_stream called with line: {}\n", line.substr(0, 100)));
     }
@@ -195,7 +251,7 @@ void OllamaClient::process_response_stream(const std::string& line) {
         bool is_streaming = !first_chunk;
         first_chunk = false;
 
-        if (this->ui->is_running() == false) {
+        if (UserInterface::ui_running(this->ui) == false) {
             UserInterface::print_message_noninteractive(text);
         } else {
             this->ui->print_message(text, is_streaming);
@@ -242,7 +298,7 @@ std::vector<std::vector<float>> OllamaClient::generate_embeddings(const std::vec
         std::string response = this->curl->fetch_web_content(this->urls.embed_url, post_data);
 
 #ifdef DEBUG
-        if (this->ui->is_running() == false) {
+        if (UserInterface::ui_running(this->ui) == false) {
             UserInterface::print_message_noninteractive(
                 std::format("\t[DEBUG] generate_embeddings response {}\n", response));
         }
@@ -270,7 +326,7 @@ std::vector<std::vector<float>> OllamaClient::generate_embeddings(const std::vec
 void OllamaClient::query_model(std::optional<OllamaClientConfig> config_opt) {
     std::string message =
         std::format("💬 user: {}\n", config_opt != std::nullopt ? config_opt->prompt.c_str() : config->prompt.c_str());
-    if (this->ui->is_running() == false) {
+    if (UserInterface::ui_running(this->ui) == false) {
         UserInterface::print_message_noninteractive(message);
     } else {
         this->ui->print_message(message);
@@ -293,7 +349,7 @@ void OllamaClient::query_model(std::optional<OllamaClientConfig> config_opt) {
                 this->process_response_stream(chunk);
             });
         message = std::format("Stream successful: {}, Status: {}\n", response.success, response.status);
-        if (this->ui->is_running() == false) {
+        if (UserInterface::ui_running(this->ui) == false) {
             UserInterface::print_message_noninteractive(message);
         } else {
             this->ui->print_message(message);
@@ -319,6 +375,7 @@ void OllamaClient::query_model(std::optional<OllamaClientConfig> config_opt) {
  *         Returns an empty vector if an error occurs during fetch or parsing.
  */
 std::vector<std::string> OllamaClient::query_model_list() {
+    UserInterface::print_message_noninteractive("running query_model_list");
     std::string message{};
     std::vector<std::string> models;
 
@@ -329,9 +386,9 @@ std::vector<std::string> OllamaClient::query_model_list() {
 
         if (!data.contains("models") || !data["models"].is_array()) {
             message = "Response has no models array.\n";
-            if (this->ui->is_running() == false) {
+            if (UserInterface::ui_running(this->ui) == false) {
                 UserInterface::print_error_noninteractive(message);
-                exit(1);
+                std::exit(EXIT_FAILURE);
             } else {
                 this->ui->print_error(message);
                 this->ui->end_session(EXIT_FAILURE);
@@ -339,7 +396,7 @@ std::vector<std::string> OllamaClient::query_model_list() {
         }
 
         message = "📃 available models:\n";
-        if (this->ui->is_running() == false) {
+        if (UserInterface::ui_running(this->ui) == false) {
             UserInterface::print_message_noninteractive(message);
         } else {
             this->ui->print_message(message);
@@ -357,7 +414,7 @@ std::vector<std::string> OllamaClient::query_model_list() {
             }
 
             message = std::format("{}\t ({}) \t{}\n", modified_at, size, name);
-            if (this->ui->is_running() == false) {
+            if (UserInterface::ui_running(this->ui) == false) {
                 UserInterface::print_message_noninteractive(message);
             } else {
                 this->ui->print_message(message);
@@ -366,9 +423,9 @@ std::vector<std::string> OllamaClient::query_model_list() {
         UserInterface::print_message_noninteractive("\n");
     } catch (const json::exception& err) {
         message = std::format("JSON parse error: {}\n", err.what());
-        if (this->ui->is_running() == false) {
+        if (UserInterface::ui_running(this->ui) == false) {
             UserInterface::print_error_noninteractive(message);
-            exit(1);
+            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
             this->ui->end_session(EXIT_FAILURE);
