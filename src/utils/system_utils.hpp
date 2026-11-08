@@ -10,6 +10,8 @@ class SystemUtils {
      */
     std::shared_ptr<UserInterface> ui;
 
+    void report_failure(const std::string& message);
+
   public:
     explicit SystemUtils(std::shared_ptr<UserInterface> ui);
 

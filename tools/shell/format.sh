@@ -48,6 +48,7 @@ cppcheck_check() {
     --error-exitcode=1 \
     --suppress=missingIncludeSystem \
     --suppress=unusedLabel \
+    --inline-suppr \
     -I src/ \
     -I src/interface \
     -I src/ollama \

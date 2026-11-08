@@ -14,62 +14,62 @@ SystemUtils::SystemUtils(std::shared_ptr<UserInterface> ui) : ui(ui) {
 }
 
 /**
- * Evaluates the status code from a system() call and handles errors appropriately.
+ * Reports a failure and ends the program with EXIT_FAILURE.
  *
- * This method interprets POSIX wait status codes using WIFEXITED and WEXITSTATUS macros.
- * If an error is detected (status -1, non-zero exit code, or abnormal termination),
- * an error message is displayed via the UserInterface or printed non-interactively,
- * and the program exits with status code 1.
+ * In interactive mode, the message is shown through the UserInterface and the
+ * session is ended with EXIT_FAILURE. Otherwise, the message is printed
+ * non-interactively and the process exits immediately with EXIT_FAILURE.
  *
- * A successful command (exit code 0) produces no output and returns normally.
+ * @param message The error message to display. The messages passed from
+ *                catch_error each end with a newline.
  *
- * Error cases handled:
- * - system() call failure (status == -1): displays "system() failed" error.
- * - Non-zero exit code: displays the exit code and terminates the program.
- * - Abnormal termination: displays "Command terminated abnormally" and terminates the program.
+ * @note In interactive mode, this relies on UserInterface::end_session() not
+ *       returning. If it does return, report_failure returns to its caller.
+ */
+void SystemUtils::report_failure(const std::string& message) {
+    if (UserInterface::ui_running(ui)) {
+        ui->print_error(message);
+        ui->end_session(EXIT_FAILURE);
+    } else {
+        UserInterface::print_error_noninteractive(message);
+        std::exit(EXIT_FAILURE);
+    }
+}
+
+/**
+ * Evaluates the wait status from a system() call and reports any failure.
  *
- * Output routing:
- * - If UserInterface is in interactive mode, errors are sent via ui->print_error().
- * - Otherwise, errors are printed non-interactively via UserInterface::print_message_noninteractive().
+ * This method interprets the status with the POSIX macros WIFEXITED and
+ * WEXITSTATUS. A status of -1 means system() itself failed, and only the
+ * "system() failed." message is reported. A status where the process did not
+ * exit normally is reported as "Command terminated abnormally." A normal exit
+ * with a non-zero code is reported with that code. A successful command
+ * (exit code 0) produces no output and returns normally.
  *
- * @param status The wait status code returned from a system() call.
- *               Interpret using POSIX macros WIFEXITED and WEXITSTATUS.
+ * Each failure is passed to report_failure(), which shows the message through
+ * the UserInterface in interactive mode or prints it non-interactively
+ * otherwise, then ends the program with EXIT_FAILURE.
  *
- * @throws Terminates the program with exit code 1 on any detected error condition.
+ * @param status The wait status returned from a system() call, as interpreted
+ *               by the POSIX macros WIFEXITED and WEXITSTATUS.
  *
- * @note This method never returns after encountering an error; callers should not
- *       expect execution to continue beyond a non-zero exit code or abnormal termination.
+ * @throws Does not throw. Ends the program with EXIT_FAILURE on any detected
+ *         error, through report_failure().
+ *
+ * @note Non-interactive failures terminate the process immediately. Interactive
+ *       failures return to the caller only if UserInterface::end_session() returns.
  */
 void SystemUtils::catch_error(int status) {
-    std::string message{};
     if (status == -1) {
-        message = "system() failed.\n";
-        if (UserInterface::ui_running(this->ui) == false) {
-            UserInterface::print_error_noninteractive(message);
-        } else {
-            this->ui->print_error(message);
-        }
+        this->report_failure("system() failed.\n");
+        return;
     }
-    if (WIFEXITED(status)) {
-        int exit_code = WEXITSTATUS(status);
-        if (exit_code != 0) {
-            message = std::format("Command failed with exit code {}.\n", exit_code);
-            if (UserInterface::ui_running(this->ui) == false) {
-                UserInterface::print_error_noninteractive(message);
-                std::exit(EXIT_FAILURE);
-            } else {
-                this->ui->print_error(message);
-                this->ui->end_session(EXIT_FAILURE);
-            }
-        }
-    } else {
-        message = std::format("Command terminated abnormally.\n");
-        if (UserInterface::ui_running(this->ui) == false) {
-            UserInterface::print_error_noninteractive(message);
-            std::exit(EXIT_FAILURE);
-        } else {
-            this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
-        }
+    if (!WIFEXITED(status)) {
+        this->report_failure("Command terminated abnormally.\n");
+        return;
+    }
+    int exit_code = WEXITSTATUS(status);
+    if (exit_code != 0) {
+        this->report_failure(std::format("Command failed with exit code {}.\n", exit_code));
     }
 }
