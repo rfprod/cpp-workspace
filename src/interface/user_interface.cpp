@@ -1,18 +1,14 @@
 #include "user_interface.hpp"
+#include "utils/exit_request.hpp"
 #include <chrono>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
 #include <locale>
-#include <ncurses.h>
 #include <sstream>
 
 std::weak_ptr<UserInterface> UserInterface::instance;
-
-volatile sig_atomic_t UserInterface::resize_flag = 0;
-
-volatile sig_atomic_t UserInterface::interrupt_flag = 0;
 
 /**
  * Creates a UserInterface instance with the light theme as the default color scheme.
@@ -50,492 +46,12 @@ std::shared_ptr<UserInterface> UserInterface::create(bool dark_theme) {
 }
 
 /**
- * Semantic color pair identifiers for terminal UI rendering.
- *
- * Defines named color pair constants for consistent theming across the application.
- * Each constant maps to an ncurses color pair ID, enabling semantic color assignment
- * for different UI contexts and message types. Values range from 1 to 9, matching
- * ncurses color pair initialization indices.
- *
- * - DEFAULT_PAIR: Standard text color for neutral content
- * - HIGHLIGHT_PAIR: Emphasis color for selected or important items
- * - SUCCESS_PAIR: Color for successful operations or positive messages
- * - WARNING_PAIR: Color for cautionary messages or non-critical issues
- * - ERROR_PAIR: Color for error messages and critical failures
- * - INFO_PAIR: Color for informational messages
- * - MUTED_PAIR: Subdued color for de-emphasized content
- * - ACCENT_PAIR: Decorative color for visual variety and UI separation
- * - FOCUS_PAIR: Color for focused or active UI elements
- */
-enum ColorPair {
-    DEFAULT_PAIR = 1,
-    HIGHLIGHT_PAIR = 2,
-    SUCCESS_PAIR = 3,
-    WARNING_PAIR = 4,
-    ERROR_PAIR = 5,
-    INFO_PAIR = 6,
-    MUTED_PAIR = 7,
-    ACCENT_PAIR = 8,
-    FOCUS_PAIR = 9
-};
-
-/**
- * Initializes ncurses color pairs with a dark theme color scheme.
- *
- * Enables ncurses color support via start_color(), allows the terminal's default
- * background color to be used via use_default_colors(), and defines all ColorPair
- * color pair constants with semantic foreground/background combinations.
- *
- * Most pairs use -1 as background, preserving the terminal's default background
- * color. HIGHLIGHT_PAIR uses black text on white background for strong contrast,
- * and FOCUS_PAIR uses white text on blue background for focused element visibility.
- *
- * This method should be called early during UserInterface initialization, before
- * any colored text is rendered to the terminal.
- */
-void UserInterface::init_dark_theme(void) {
-    start_color();
-    use_default_colors();
-
-    // Purpose | Foreground | Background
-    init_pair(DEFAULT_PAIR, COLOR_WHITE, -1);
-    init_pair(HIGHLIGHT_PAIR, COLOR_BLACK, COLOR_WHITE);
-    init_pair(SUCCESS_PAIR, COLOR_GREEN, -1);
-    init_pair(WARNING_PAIR, COLOR_YELLOW, -1);
-    init_pair(ERROR_PAIR, COLOR_RED, -1);
-    init_pair(INFO_PAIR, COLOR_CYAN, -1);
-    init_pair(ACCENT_PAIR, COLOR_MAGENTA, -1);
-    init_pair(FOCUS_PAIR, COLOR_WHITE, COLOR_BLUE);
-}
-
-/**
- * Initializes ncurses color pairs with a light theme color scheme.
- *
- * Enables ncurses color support via start_color(), allows the terminal's default
- * background color to be used via use_default_colors(), and defines all ColorPair
- * color pair constants with semantic foreground/background combinations optimized
- * for light terminal backgrounds.
- *
- * Unlike the dark theme, most pairs use white backgrounds for contrast against
- * darker text. DEFAULT_PAIR uses black text on white for standard content, and
- * HIGHLIGHT_PAIR inverts to white text on black for strong emphasis. FOCUS_PAIR
- * uses black text on cyan background for focused element visibility.
- *
- * This method should be called early during UserInterface initialization, before
- * any colored text is rendered to the terminal. Select init_dark_theme() or
- * init_light_theme() based on the user's terminal background preference.
- */
-void UserInterface::init_light_theme(void) {
-    start_color();
-    use_default_colors();
-
-    // Purpose | Foreground | Background
-    init_pair(DEFAULT_PAIR, COLOR_BLACK, COLOR_WHITE);
-    init_pair(HIGHLIGHT_PAIR, COLOR_WHITE, COLOR_BLACK);
-    init_pair(SUCCESS_PAIR, COLOR_GREEN, COLOR_WHITE);
-    init_pair(WARNING_PAIR, COLOR_YELLOW, COLOR_WHITE);
-    init_pair(ERROR_PAIR, COLOR_RED, COLOR_WHITE);
-    init_pair(INFO_PAIR, COLOR_BLUE, COLOR_WHITE);
-    init_pair(ACCENT_PAIR, COLOR_MAGENTA, COLOR_WHITE);
-    init_pair(FOCUS_PAIR, COLOR_BLACK, COLOR_CYAN);
-}
-
-/**
- * Initializes the ncurses terminal UI with locale support, terminal configuration, color theming, and signal handling.
- *
- * Sets the locale to UTF-8 for character encoding support and establishes TERMINFO fallback to the system
- * terminfo database if not already set (handles Conan ncurses builds). Initializes ncurses with initscr(),
- * terminating with error diagnostics on failure. Updates window layout via update_layout().
- *
- * Configures terminal I/O: enables cbreak mode (immediate input) and disables echo. Attempts to enable
- * function key and arrow key support via keypad(); non-fatal warning if unsupported. Sets input blocking
- * mode (getch() waits for user input). Attempts to hide the cursor; non-fatal warning if unsupported.
- *
- * If the terminal supports colors, initializes color pairs by calling init_dark_theme() or init_light_theme()
- * based on the use_dark_theme flag, and sets the terminal background to DEFAULT_PAIR. Registers SIGWINCH
- * signal handler for terminal window resize detection and SIGINT handler for interrupt cleanup.
- *
- * Terminates the program on critical failures (initscr failure or terminal setup failure).
- * Non-critical feature failures (keypad, cursor hiding) produce warnings but do not halt initialization.
- */
-void UserInterface::init_ncurses(void) {
-    // Set up locale for UTF-8 support.
-    setlocale(LC_ALL, "");
-
-    // Set TERMINFO to system database if Conan ncurses can't find it.
-    if (!std::getenv("TERMINFO")) {
-        setenv("TERMINFO", "/usr/share/terminfo", 0);
-    }
-
-    // Initialize ncurses.
-    const WINDOW* w = initscr();
-    if (!w) {
-        const char* term = getenv("TERM");
-        fprintf(stderr, "Failed to initialize ncurses with TERM=%s\n", term ? term : "unset");
-        std::exit(EXIT_FAILURE);
-    }
-
-    this->update_layout();
-
-    // Setup terminal.
-    if (cbreak() == ERR || noecho() == ERR) {
-        endwin();
-        fprintf(stderr, "Terminal setup failed\n");
-        std::exit(EXIT_FAILURE);
-    }
-
-    // Enable function keys and arrow keys.
-    if (keypad(stdscr, TRUE) == ERR) {
-        fprintf(stderr, "Warning: keypad() not supported\n");
-    }
-
-    // Block on input (getch waits for input).
-    nodelay(stdscr, FALSE);
-
-    // Cursor hiding (may not be supported).
-    if (curs_set(0) == ERR) {
-        fprintf(stderr, "Warning: cursor control not supported on this terminal\n");
-    }
-
-    if (has_colors()) {
-        if (this->use_dark_theme == true) {
-            this->init_dark_theme();
-        } else {
-            this->init_light_theme();
-        }
-        bkgd(COLOR_PAIR(DEFAULT_PAIR));
-    }
-
-    signal(SIGWINCH, UserInterface::handle_resize);
-    signal(SIGINT, UserInterface::handle_interrupt);
-}
-
-/**
- * Cleans up ncurses and restores the terminal to its normal state.
- *
- * Calls endwin() to tear down the ncurses library, which restores terminal settings (echo, cbreak mode,
- * cursor visibility, color state) and clears the screen. Must be called before program termination to
- * prevent terminal corruption.
- */
-void UserInterface::cleanup_ncurses(void) {
-    endwin();
-}
-
-/**
- * Draws the terminal UI frame with a Unicode box border.
- *
- * Clears the screen and retrieves the current terminal dimensions (max_y, max_x) via getmaxyx().
- * Draws a complete box frame using Unicode box-drawing characters: ╔ and ╗ (top corners), ╚ and ╝
- * (bottom corners), ═ (horizontal edges), and ║ (vertical edges). Positions characters using mvprintw()
- * to create a full-terminal border with proper corner and edge placement.
- *
- * Refreshes the display with refresh() to flush buffered output and show the drawn frame on screen.
- */
-void UserInterface::draw_ui(void) {
-    clear();
-
-    int max_y;
-    int max_x;
-    getmaxyx(stdscr, max_y, max_x);
-
-    int i;
-
-    // Top border
-    mvprintw(0, 0, "╔");
-    for (i = 1; i < max_x - 1; i += 1) {
-        mvprintw(0, i, "═");
-    }
-    mvprintw(0, max_x - 1, "╗");
-
-    // Side borders
-    for (i = 1; i < max_y - 1; i += 1) {
-        mvprintw(i, 0, "║");
-        mvprintw(i, max_x - 1, "║");
-    }
-
-    // Bottom border
-    mvprintw(max_y - 1, 0, "╚");
-    for (i = 1; i < max_x - 1; i += 1) {
-        mvprintw(max_y - 1, i, "═");
-    }
-    mvprintw(max_y - 1, max_x - 1, "╝");
-
-    refresh();
-}
-
-/**
- * Draws an animated spinner with optional progress percentage at the UI layout position.
- *
- * Returns early if the spinner is not active (checked via is_spinner_active()). Loads the current
- * animation frame index and progress percentage from atomic variables (spinner_frame, progress_percent)
- * in a thread-safe manner. Selects the appropriate spinner character from a rotating set (|, /, -, \)
- * based on the frame index.
- *
- * Enables DEFAULT_PAIR color styling and renders the spinner at the layout-defined position
- * (layout.spinner_y, layout.spinner_x) using mvprintw(). If progress > 0, displays "X Loading..."
- * with the progress percentage; otherwise displays "X Loading..." without percentage. Disables color
- * styling after rendering.
- *
- * Thread-safe via atomic variable loads; does not modify shared state.
- */
-void UserInterface::draw_spinner() {
-    if (!this->is_spinner_active()) {
-        return;
-    }
-
-    const char spinner_chars[] = {'|', '/', '-', '\\'};
-    int frame = this->spinner_frame.load();
-    int progress = this->progress_percent.load();
-
-    attron(COLOR_PAIR(DEFAULT_PAIR));
-
-    if (progress > 0) {
-        mvprintw(this->layout.spinner_y, this->layout.spinner_x, "%c Progress: %d%%", spinner_chars[frame], progress);
-    } else {
-        mvprintw(this->layout.spinner_y, this->layout.spinner_x, "%c Loading...", spinner_chars[frame]);
-    }
-
-    attroff(COLOR_PAIR(DEFAULT_PAIR));
-}
-
-/**
- * Recalculates UI layout positions and dimensions based on current terminal size.
- *
- * Retrieves the current terminal dimensions (max_y, max_x) via getmaxyx() and updates the layout
- * structure to position UI elements relative to terminal boundaries. Sets status_y to the bottom row
- * (max_y - 1), input area to max_y - 3 with left margin of 2 columns, and spinner to max_y - 2
- * (between input and status rows). Sets output area to start at row 1 (below top border) with height
- * calculated as the vertical space between output_y and input_y minus one row for spacing.
- *
- * Intended to be called during initialization and in response to terminal resize events (SIGWINCH)
- * to ensure all UI elements remain properly positioned and sized when the terminal is resized.
- */
-void UserInterface::update_layout() {
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-
-    layout.status_y = max_y - 1;
-    layout.input_y = max_y - 3;
-    layout.input_x = 2;
-    layout.spinner_y = max_y - 2;
-    layout.spinner_x = 2;
-    layout.output_y = 1;
-    layout.output_height = layout.input_y - layout.output_y - 1;
-}
-
-/**
- * Clears the input area rows by overwriting them with spaces.
- *
- * Retrieves the current terminal dimensions (max_y, max_x) via getmaxyx(). Erases two rows of the
- * input area (layout.input_y and layout.input_y + 1) by drawing horizontal lines of spaces from
- * column 1 to max_x - 2, leaving the left and right borders intact.
- *
- * Used to erase previous user input or prompts before rendering new content in the input area.
- * Maintains visual consistency by preserving the terminal border structure.
- */
-void UserInterface::clear_input_area() {
-    int max_y, max_x;
-    getmaxyx(stdscr, max_y, max_x);
-
-    mvhline(layout.input_y, 1, ' ', max_x - 2);
-    mvhline(layout.input_y + 1, 1, ' ', max_x - 2);
-}
-
-/**
- * Renders the input prompt and user-typed content in the input area.
- *
- * Clears the input area via clear_input_area(). Returns early if the spinner is currently active,
- * preventing prompt and input display while a background operation (query execution) is in progress.
- *
- * When the spinner is inactive, renders a static prompt "⏳ Type your prompt (q/Q to quit): " at
- * the layout-defined input position (layout.input_y, layout.input_x). Renders the contents of the
- * input_buffer (user-typed characters) immediately following the prompt text at a fixed column offset
- * (+37 from input_x).
- *
- * Provides visual feedback and instructions to the user while maintaining a clean, non-overlapping
- * layout during asynchronous spinner operation.
- */
-void UserInterface::draw_input_area() {
-    this->clear_input_area();
-    if (this->is_spinner_active()) {
-        return;
-    }
-
-    mvprintw(layout.input_y, layout.input_x, "⏳ Type your prompt (q/Q to quit): ");
-
-    // Draw the actual input buffer that user typed
-    mvprintw(layout.input_y, layout.input_x + 37, "%s", input_buffer.c_str());
-}
-
-/**
- * Renders the message output buffer in reverse chronological order (newest first),
- * from the bottom of the output area upward.
- *
- * Clears the entire output area by filling each row with spaces, preserving the border columns.
- * Iterates backwards through output_buffer, starting from the most recently added message.
- * For each message, extracts the text content and message type (error/success/default).
- *
- * Splits multi-line message text by newline characters. Wraps each logical line at word
- * boundaries using TextUtils::wrap_text() to fit within max_content_width (COLS - 4).
- * Renders wrapped lines from bottom to top (reverse order) within the allocated output area,
- * decrementing current_line after each rendered line.
- *
- * Applies semantic color and icon styling based on message type:
- * - MESSAGE_TYPE_ERROR: bold red (ERROR_PAIR) with ❌ emoji prefix.
- * - MESSAGE_TYPE_SUCCESS: bold default color with ✅ emoji prefix.
- * - Default: plain text without icon.
- *
- * Breaks iteration early if current_line reaches or falls below layout.output_y (top boundary).
- * Calls refresh() to update the terminal display.
- *
- * Provides a scrollable-like view of the most recent messages within the constrained output area,
- * with automatic wrapping and visual differentiation for errors and successful operations.
- */
-void UserInterface::draw_output_area() {
-    // Clear the output area
-    for (int i = 0; i < layout.output_height; i += 1) {
-        mvhline(layout.output_y + i, 1, ' ', COLS - 2);
-    }
-
-    int current_line = layout.input_y - 2; // Start from bottom
-    int max_content_width = COLS - 4;
-
-    // Iterate backwards through buffer (newest first)
-    for (auto it = output_buffer.rbegin(); it != output_buffer.rend(); it += 1) {
-        if (current_line <= layout.output_y) {
-            break;
-        }
-
-        const auto& [text, type] = *it;
-        std::istringstream stream(text);
-        std::string line;
-        std::vector<std::string> display_lines;
-
-        // Process each logical line from the message
-        while (std::getline(stream, line)) {
-            // Wrap long lines at word boundaries
-            auto wrapped = TextUtils::wrap_text(line, max_content_width);
-            display_lines.insert(display_lines.end(), wrapped.begin(), wrapped.end());
-        }
-
-        // Render from bottom to top (reverse order)
-        for (auto line_it = display_lines.rbegin(); line_it != display_lines.rend(); line_it += 1) {
-            if (current_line <= layout.output_y) break;
-
-            if (type == UserInterface::MESSAGE_TYPE_ERROR) {
-                wattron(stdscr, COLOR_PAIR(ERROR_PAIR) | A_BOLD);
-                mvprintw(current_line, 2, "❌ %s", line_it->c_str());
-                wattroff(stdscr, COLOR_PAIR(ERROR_PAIR) | A_BOLD);
-            } else if (type == UserInterface::MESSAGE_TYPE_SUCCESS) {
-                wattron(stdscr, A_BOLD);
-                mvprintw(current_line, 2, "✅ %s", line_it->c_str());
-                wattroff(stdscr, A_BOLD);
-            } else {
-                mvprintw(current_line, 2, "%s", line_it->c_str());
-            }
-
-            current_line--;
-        }
-    }
-
-    refresh();
-}
-
-/**
- * @brief Spawns the background rendering thread and sets the thread_running flag.
- *
- * Sets thread_running to true and creates a new std::thread that invokes render_loop().
- * The thread is joinable and must be cleaned up via stop_render_thread() or equivalent.
- *
- * @note Call this after init_ncurses() to begin continuous UI rendering.
- * @see render_loop(), stop_render_thread()
- */
-void UserInterface::start_render_thread(void) {
-    this->thread_running = true;
-    this->render_thread = std::thread(&UserInterface::render_loop, this);
-}
-
-/**
- * @brief Gracefully shuts down the background rendering thread.
- *
- * Sets thread_running to false and notifies the condition variable cv_redraw to
- * wake the render loop. Joins the thread if it is joinable, ensuring complete cleanup.
- *
- * @note Call this during session shutdown or before destroying the UserInterface instance.
- * @see start_render_thread(), render_loop()
- */
-void UserInterface::stop_render_thread(void) {
-    this->thread_running = false;
-    this->cv_redraw.notify_one();
-    if (this->render_thread.joinable() && this->render_thread.get_id() != std::this_thread::get_id()) {
-        this->render_thread.join();
-    }
-}
-
-/**
- * @brief Main rendering loop executed by the background render thread.
- *
- * Runs continuously while thread_running is true. Uses cv_redraw condition variable
- * with a 1500ms timeout to wait efficiently for redraw requests. Handles terminal resize
- * events (endwin(), refresh(), update_layout(), cursor recalculation). Conditionally
- * redraws UI components (draw_ui, draw_output_area, draw_input_area, draw_spinner)
- * when should_redraw is set. All ncurses operations are protected by ui_mutex.
- *
- * @note This method is the entry point for the render thread and should not be called directly.
- * Call start_render_thread() to spawn it. Terminate via stop_render_thread().
- * @see start_render_thread(), stop_render_thread(), draw_ui(), draw_output_area(), draw_input_area(), draw_spinner()
- */
-void UserInterface::render_loop(void) {
-    while (this->thread_running) {
-        std::unique_lock<std::mutex> lock(this->ui_mutex);
-
-        // Wait for redraw request or timeout (100ms)
-        this->cv_redraw.wait_for(lock, std::chrono::milliseconds(1500), [this] { return this->should_redraw.load(); });
-
-        if (UserInterface::interrupt_flag) {
-            this->end_session();
-            break;
-        }
-
-        // Handle resize (under lock)
-        if (UserInterface::resize_flag) {
-            UserInterface::resize_flag = 0;
-            endwin();
-            refresh();
-            this->update_layout();
-
-            // Recalculate cursor position after resize
-            input_cursor_x = layout.input_x + 37 + input_buffer.length();
-            this->should_redraw = true; // Force redraw after resize
-        }
-
-        // Redraw UI (all ncurses calls under lock)
-        if (this->should_redraw) {
-            this->draw_ui();
-            this->draw_output_area();
-            this->draw_input_area();
-            this->draw_spinner();
-
-            refresh();
-            this->should_redraw = false;
-        }
-
-        lock.unlock();
-    }
-}
-
-/**
  * Constructs a UserInterface instance and initializes member variables.
  *
- * Initializes input_cursor_x to 0 (cursor at leftmost position).
- * Initializes layout struct to default-constructed values (all fields zeroed/default).
- * Sets use_dark_theme to true, establishing dark theme as the default color scheme preference.
- *
- * Note: This constructor performs only member initialization and singleton registration.
- * Full ncurses initialization (terminal setup, color pair configuration, input handling) is deferred
- * to init_ncurses(), which must be called explicitly after construction to establish the UI environment.
+ * Initializes the TerminalBackend.
  */
-UserInterface::UserInterface() : input_cursor_x(0), layout({}), use_dark_theme(true) {
+UserInterface::UserInterface() {
+    this->backend = std::make_unique<TerminalBackend>();
 }
 
 /**
@@ -543,188 +59,73 @@ UserInterface::UserInterface() : input_cursor_x(0), layout({}), use_dark_theme(t
  *
  * @param dark_theme: Boolean flag to select color scheme; true for dark theme, false for light theme.
  *
- * Initializes input_cursor_x to 0 (cursor at leftmost position).
- * Initializes layout struct to default-constructed values (all fields zeroed/default).
- * Sets use_dark_theme to the caller-provided dark_theme value, establishing the preferred
- * color scheme that will be applied during init_ncurses().
- *
- * Note: This constructor performs only member initialization and singleton registration.
- * Full ncurses initialization (terminal setup, color pair configuration, input handling) is deferred
- * to init_ncurses(), which must be called explicitly after construction to establish the UI environment.
+ * Initializes the TerminalBackend.
  */
-UserInterface::UserInterface(bool dark_theme) : input_cursor_x(0), layout({}), use_dark_theme(dark_theme) {
+UserInterface::UserInterface(bool dark_theme) {
+    this->backend = std::make_unique<TerminalBackend>(dark_theme);
 }
 
 /**
  * Destructs a UserInterface instance and releases ncurses resources.
- *
- * Calls cleanup_ncurses() to restore terminal settings and release ncurses state.
- * This operation calls endwin() to exit ncurses mode and prevent terminal corruption upon program exit.
- *
- * Nullifies the static instance pointer (UserInterface::instance = nullptr) to clear the singleton reference.
- * This prevents accidental use-after-free from static methods or signal handlers attempting to access
- * a destroyed UI instance.
- *
- * Ensures proper terminal state restoration and safe cleanup of the singleton pattern.
- *
- * Note: Should be called when the UI environment is no longer needed, typically before program termination.
  */
 UserInterface::~UserInterface() {
     this->end_session();
 }
 
 /**
- * Queries the current running state of the UI application.
+ * Reports whether the backend's thread is currently running.
  *
- * @return Boolean indicating whether the rendering thread is actively running.
+ * The function returns the result of backend->is_running(). It does not
+ * acquire ui_mutex, and the value can change immediately after the call
+ * returns.
  *
- * - true if thread_running == 1 (active/running);
+ * @return true if the backend thread is running, false otherwise.
  *
- * - false if thread_running == 0 (inactive/stopped).
+ * @pre backend is not null.
  *
- * Performs a thread-safe atomic read of the running flag, allowing safe concurrent
- * queries from multiple threads without synchronization overhead.
- *
- * Typically used to determine what output method to use for debug output.
+ * @note Use this for status checks only. Do not use it to decide whether to
+ *       start or stop the backend without coordinating through another
+ *       synchronization mechanism, because the state can change between the
+ *       check and the action.
  */
-bool UserInterface::is_running() {
-    return this->thread_running == 1;
+bool UserInterface::backend_running() {
+    return this->backend->is_running();
 }
 
 /**
- * Checks whether a UserInterface is attached and currently running.
+ * Runs the user interface by delegating to the backend.
  *
- * Used throughout the application to choose between UI-based output and
- * non-interactive output (stdout and stderr). Returns false when no
- * UserInterface is set, so callers take the non-interactive path.
+ * The function calls backend->run() and does nothing else. The behavior,
+ * including whether and when the call returns, is defined by
+ * TerminalBackend::run().
  *
- * @param user_interface The UserInterface to check. May be nullptr.
+ * @pre backend is not null.
  *
- * @return true if user_interface is non-null and its UI is running, false otherwise.
- */
-bool UserInterface::ui_running(const std::shared_ptr<UserInterface>& user_interface) {
-    return user_interface != nullptr && user_interface->is_running();
-}
-
-/**
- * Static signal handler for SIGWINCH (terminal resize) events.
- *
- * @param sig Signal number (SIGWINCH); unused but required by signal handler signature.
- *
- * Checks if the singleton UserInterface instance exists. If it does, sets the atomic
- * resize_flag to 1, signaling to the main event loop that a terminal resize has occurred
- * and the layout must be recalculated.
- *
- * Re-registers this handler with signal(SIGWINCH, ...) to ensure continued handling of
- * subsequent resize events. This re-registration is necessary on systems where signal handlers
- * are one-time (non-persistent) and must be re-armed after each invocation.
- *
- * Uses atomic flag-setting rather than directly invoking layout recalculation, deferring
- * resize handling to the main event loop to avoid complex operations within signal context.
- * Provides defensive null-check of the singleton instance in case the handler is invoked
- * after the UI is destroyed.
- *
- * Enables responsive terminal resizing without blocking signal delivery or causing
- * signal-safe function violations.
- */
-void UserInterface::handle_resize(int sig) {
-    UserInterface::resize_flag = 1;
-
-    signal(SIGWINCH, UserInterface::handle_resize);
-}
-
-/**
- * Static signal handler for SIGINT (interrupt) signal.
- *
- * @param sig Signal number (SIGINT); unused but required by signal handler signature.
- *
- * Requests a graceful shutdown when the user presses Ctrl+C. The handler only sets the
- * volatile sig_atomic_t interrupt_flag, which is the only operation guaranteed to be safe
- * inside a signal handler. It does not call ncurses functions, lock mutexes, touch the
- * singleton instance, or call exit().
- *
- * The render thread checks interrupt_flag on each iteration, sets thread_running to false,
- * and exits its loop. The thread then ends before the UserInterface destructor runs, which
- * performs the ncurses cleanup (endwin()) and restores the terminal to its original state.
- *
- * Because the handler does not terminate the process, destructors run normally and resources
- * are released through the usual RAII path.
- *
- * Does not return a value and does not exit the process.
- */
-void UserInterface::handle_interrupt(int sig) {
-    UserInterface::interrupt_flag = 1;
-}
-
-/**
- * Initializes and starts the UserInterface subsystem.
- *
- * Performs full initialization pipeline: calls init_ncurses() to set up the ncurses
- * library, terminal settings, and signal handlers; calls draw_ui() to render the initial
- * full-terminal Unicode box border; and calls start_render_thread() to spawn the background rendering thread.
- *
- * The rendering thread continuously redraws the UI (output area, input area, spinner)
- * in response to state changes and terminal resize events (resize_flag).
- *
- * No parameters; operates on the current UserInterface instance state.
- *
- * @return void
- *
- * Initialization status is communicated via successful completion (or
- * program termination if init_ncurses() encounters a fatal error).
- *
- * Acts as the entry point for the UI system. Should be called once after UserInterface
- * instantiation and before any event processing or input handling.
- *
- * Enables the interactive terminal UI with responsive rendering and asynchronous
- * screen updates via the background thread, while the main thread handles user input
- * and application logic.
+ * @note Any blocking, error handling, or session termination happens inside
+ *       TerminalBackend::run(). Refer to that method's documentation for those
+ *       details.
  */
 void UserInterface::run(void) {
-    this->init_ncurses();
-
-    this->draw_ui();
-
-    this->start_render_thread();
+    this->backend->run();
 }
 
 /**
- * Gracefully terminates the UserInterface subsystem and exits the application.
+ * Shows a session-ended message, ends the backend session.
  *
- * @param code Exit status code passed to exit(); typically EXIT_SUCCESS (0) or EXIT_FAILURE (1).
+ * The function calls print_message() with the end-of-session message, calls
+ * backend->end_session() to stop the render thread and restore the terminal,
+ * and then calls std::exit(code). The function does not return.
  *
- * Performs an orderly shutdown sequence: prints a farewell message ("🏁 The session has ended."),
- * sleeps for 1000 milliseconds to ensure the message is visible on screen, stops the background
- * render thread via stop_render_thread(), restores terminal settings via cleanup_ncurses(),
- * and exits the process with the provided exit_code.
- *
- * The delay (napms) between printing and thread shutdown allows the message to be displayed
- * before the render thread is terminated and the screen is cleared, ensuring the user sees
- * the farewell notification.
- *
- * Guarantees terminal restoration even when exiting via this controlled path, preventing
- * the terminal from being left in a corrupted ncurses state. The cleanup_ncurses() call
- * ensures endwin() is invoked to restore terminal settings (cursor, echo, etc.).
- *
- * Acts as the primary exit point for controlled application termination. Should be called
- * in response to user quit command (q/Q) or successful completion of application logic.
- *
- * Terminates the process immediately with exit(); does not return to caller.
- *
- * Enables clean, user-facing shutdown with guaranteed terminal restoration and thread cleanup.
+ * @pre backend is not null.
  */
 void UserInterface::end_session(int code) {
-    this->print("🏁 The session has ended.");
+    this->print_message("🏁 The session has ended.");
 
-    napms(1000);
-
-    this->stop_render_thread();
-
-    if (!this->terminal_restored.exchange(true)) {
-        this->cleanup_ncurses();
+    if (this->backend->is_running()) {
+        this->backend->end_session(code);
+    } else {
+        throw ExitRequest{code};
     }
-
-    std::exit(code);
 }
 
 /**
@@ -744,7 +145,7 @@ void UserInterface::end_session(int code) {
  * Boolean parameters are converted to human-readable "true" or "false" strings using conditional
  * operators, then concatenated into the buffer.
  *
- * Prints the formatted buffer via this->print() with MESSAGE_TYPE_NORMAL styling, displaying
+ * Prints the formatted buffer via this->print_message(), displaying
  * the configuration summary in the output area for user visibility.
  *
  * @return void
@@ -770,7 +171,7 @@ void UserInterface::print_args(const std::string& model, const std::string& embe
     buffer += "🛈 dark_theme = " + std::string(dark_theme ? "true" : "false") + "\n";
     buffer += "🛈 skip_embedding = " + std::string(skip_embedding ? "true" : "false") + "\n";
 
-    this->print(buffer, UserInterface::MESSAGE_TYPE_NORMAL);
+    this->print_message(buffer);
 }
 
 /**
@@ -837,15 +238,13 @@ void UserInterface::print_args_noninteractive(const std::string& model, const st
  * "[index] model_name" on a separate line, where index is zero-based and automatically
  * converted from the loop counter using std::to_string().
  *
- * Outputs the constructed buffer to the ncurses UI using print() with MESSAGE_TYPE_NORMAL
- * styling, ensuring the model list appears in the output area and is preserved in the UI's
+ * Outputs the constructed buffer to the ncurses UI using print_message() styling,
+ * ensuring the model list appears in the output area and is preserved in the UI's
  * output_buffer for proper rendering and scrolling.
  *
  * @note This method assumes models is not empty; calling with an empty vector will display
  * only the header message without any selectable options. Typically called after successfully
  * retrieving the model list from the Ollama server via query_model_list().
- *
- * @see print(), MESSAGE_TYPE_NORMAL
  */
 void UserInterface::print_model_list(const std::vector<std::string>& models) {
     std::string buffer;
@@ -854,7 +253,7 @@ void UserInterface::print_model_list(const std::vector<std::string>& models) {
         buffer += "[" + std::to_string(i) + "] " + models[i] + "\n";
     }
 
-    this->print(buffer, UserInterface::MESSAGE_TYPE_NORMAL);
+    this->print_message(buffer);
 }
 
 /**
@@ -902,35 +301,35 @@ void UserInterface::select_model(const std::vector<std::string>& models, std::st
 
     if (models.size() == 0) {
         this->print_error("There are no available models to select from.\n");
-        std::exit(EXIT_FAILURE);
+        this->end_session(EXIT_FAILURE);
     }
 
     this->request_redraw();
 
-    this->input_buffer.clear();
+    this->backend->clear_input_buffer();
     int ch;
 
     while ((ch = getch()) != '\n') {
         if (ch == KEY_BACKSPACE || ch == 127) {
-            if (!input_buffer.empty()) {
-                input_buffer.pop_back();
-                input_cursor_x--;
+            if (!this->backend->input_buffer_is_empty()) {
+                this->backend->pop_back_input_buffer();
+                this->backend->shift_input_cursor_x(-1);
                 this->request_redraw();
             }
         } else if (ch != ERR && isprint(ch)) {
-            if (input_buffer.length() < COLS - 40) { // Leave room for prompt
-                input_buffer.push_back(ch);
-                input_cursor_x++;
+            if (this->backend->room_for_prompt_in_input_buffer()) {
+                this->backend->push_back_input_buffer(ch);
+                this->backend->shift_input_cursor_x(1);
                 this->request_redraw();
             }
         }
     }
 
-    if (this->input_buffer == "q" || this->input_buffer == "Q") {
+    if (this->backend->exit_keys_in_input_buffer()) {
         this->end_session(EXIT_SUCCESS);
     }
 
-    index = stoi(this->input_buffer);
+    index = stoi(std::string(this->backend->get_input_buffer()));
 
     if (index < 0 || index >= models.size()) {
         std::string message = std::format("Model index {} does not exist.\n", index);
@@ -964,7 +363,9 @@ void UserInterface::select_model_noninteractive(const std::vector<std::string>& 
 
     if (models.size() == 0) {
         UserInterface::print_error_noninteractive("There are no available models to select from.\n");
-        std::exit(EXIT_FAILURE);
+        if (auto ui = instance.lock()) {
+            ui->end_session(EXIT_FAILURE);
+        }
     }
 
     while (read_result != 1 || index < 0 || index >= models.size()) {
@@ -979,44 +380,62 @@ void UserInterface::select_model_noninteractive(const std::vector<std::string>& 
 }
 
 /**
- * @brief Captures the next user prompt via interactive keyboard input and detects quit commands.
+ * Reads one line of user input into the prompt and reports whether it is an
+ * exit request.
  *
- * @param prompt A pointer to a string where the captured prompt will be stored.
+ * The function requests a redraw, clears the input buffer, and then reads keys
+ * with getch() until Enter ('\n') is pressed. Backspace removes the last
+ * character and moves the cursor left. A printable character is appended only
+ * if room_for_prompt_in_input_buffer() is true, and it moves the cursor right.
+ * Each change requests a redraw. When Enter is pressed, the buffer contents are
+ * copied into *prompt. The function returns true if the text is exactly "q" or
+ * "Q".
  *
- * @return bool True if the user entered "q" or "Q" (quit command); false otherwise.
+ * @param prompt Output string that receives the entered text. Must not be null.
  *
- * Clears the input buffer and enters a getch() loop to capture keyboard input, supporting
- * backspace (KEY_BACKSPACE or 127) and printable characters with length constraints.
- * Input terminates on newline (Enter key). Copies the input buffer to prompt and returns
- * true if the prompt is a quit command, signaling session termination.
+ * @return true if the entered text is "q" or "Q", otherwise false.
  *
- * @note Input buffer length is capped at COLS - 40. Requests a UI redraw on each keypress.
+ * @pre prompt is not null.
+ * @post *prompt holds the text the user entered. The input buffer still holds
+ *       the same text.
+ *
+ * @note getch() blocks until a key is pressed. Non-printable keys, such as
+ *       arrow keys, are ignored. An ERR return is also ignored, but only
+ *       because it fails the isprint() test. In non-blocking mode, this loop
+ *       would busy-wait.
+ * @note The input buffer is modified without holding ui_mutex. The render thread
+ *       can read it at the same time, so this is a data race unless the caller
+ *       guarantees that the render thread is not reading the buffer.
  */
 bool UserInterface::next_prompt(std::string* prompt) {
     bool done = false;
 
     this->request_redraw();
 
-    this->input_buffer.clear();
+    this->backend->clear_input_buffer();
+
+    timeout(100); // getch() returns ERR after 100 ms if no key is pressed
     int ch;
 
     while ((ch = getch()) != '\n') {
         if (ch == KEY_BACKSPACE || ch == 127) {
-            if (!input_buffer.empty()) {
-                input_buffer.pop_back();
-                input_cursor_x--;
+            if (!this->backend->input_buffer_is_empty()) {
+                this->backend->pop_back_input_buffer();
+                this->backend->shift_input_cursor_x(-1);
                 this->request_redraw();
             }
         } else if (ch != ERR && isprint(ch)) {
-            if (input_buffer.length() < COLS - 40) {
-                input_buffer.push_back(ch);
-                input_cursor_x++;
+            if (this->backend->room_for_prompt_in_input_buffer()) {
+                this->backend->push_back_input_buffer(ch);
+                this->backend->shift_input_cursor_x(1);
                 this->request_redraw();
             }
+        } else if (ch == ERR && !this->backend->is_running()) {
+            return true;
         }
     }
 
-    *prompt = this->input_buffer;
+    *prompt = this->backend->get_input_buffer();
 
     if (*prompt == "q" || *prompt == "Q") {
         done = true;
@@ -1044,7 +463,9 @@ bool UserInterface::next_prompt_noninteractive(std::string* prompt) {
     printf("⏳ Type your prompt (q/Q to quit): ");
     if (!std::getline(std::cin, *prompt, '\n')) {
         fprintf(stderr, "Error reading user input.\n");
-        std::exit(EXIT_FAILURE);
+        if (auto ui = instance.lock()) {
+            ui->end_session(EXIT_FAILURE);
+        }
     }
 
     if (*prompt == "q" || *prompt == "Q") {
@@ -1055,51 +476,21 @@ bool UserInterface::next_prompt_noninteractive(std::string* prompt) {
 }
 
 /**
- * @brief Queues a typed message to the output buffer and requests a UI redraw.
- *
- * @param text The message content to be displayed.
- * @param type The message type (MESSAGE_TYPE_NORMAL, MESSAGE_TYPE_ERROR, MESSAGE_TYPE_SUCCESS) that controls styling.
- * Defaults to MESSAGE_TYPE_NORMAL if not specified.
- * @param stream In the stream mode, every chunk of text after the first one is appended to the last buffer entry.
- * Defaults to 'false'.
- *
- * Thread-safe: acquires ui_mutex before adding the message to output_buffer.
- * Automatically requests a redraw via request_redraw() to display the new message.
- *
- * @see draw_output_area()
- */
-void UserInterface::print(const std::string& text, int type, bool stream) {
-    {
-        std::lock_guard<std::mutex> lock(this->ui_mutex);
-        if (stream == true && !output_buffer.empty()) {
-            output_buffer.back().first += text;
-        } else {
-            output_buffer.push_back({text, type});
-        }
-    }
-    this->request_redraw();
-}
-
-/**
  * @brief Queues an error message (bold red with ❌ prefix) and requests a redraw.
  *
  * @param text The error message content.
- *
- * @see print()
  */
 void UserInterface::print_error(const std::string& text) {
-    this->print(text, UserInterface::MESSAGE_TYPE_ERROR);
+    this->backend->print(text, TerminalBackend::MESSAGE_TYPE_ERROR);
 }
 
 /**
  * @brief Queues a success message (bold with ✅ prefix) and requests a redraw.
  *
  * @param text The success message content.
- *
- * @see print()
  */
 void UserInterface::print_success(const std::string& text) {
-    this->print(text, UserInterface::MESSAGE_TYPE_SUCCESS);
+    this->backend->print(text, TerminalBackend::MESSAGE_TYPE_SUCCESS);
 }
 
 /**
@@ -1108,11 +499,9 @@ void UserInterface::print_success(const std::string& text) {
  * @param text The message content.
  * @param stream In the stream mode, every chunk of text after the first one is appended to the last buffer entry.
  * Defaults to 'false'.
- *
- * @see print()
  */
 void UserInterface::print_message(const std::string& text, bool stream) {
-    this->print(text, UserInterface::MESSAGE_TYPE_NORMAL, stream);
+    this->backend->print(text, TerminalBackend::MESSAGE_TYPE_NORMAL, stream);
 }
 
 /**
@@ -1166,92 +555,130 @@ void UserInterface::print_message_noninteractive(const std::string& text) {
 }
 
 /**
- * @brief Signals the render thread to perform a UI redraw on the next cycle.
+ * Requests a redraw and wakes a thread waiting on cv_redraw.
  *
- * Sets should_redraw to true and notifies cv_redraw to wake the render loop,
- * ensuring a timely UI update without waiting for the 1500ms timeout.
+ * The function sets should_redraw to true through set_should_redraw(true), then
+ * calls notify_cv_redraw() with its default argument. The method does not
+ * acquire ui_mutex.
  *
- * @note Thread-safe: uses atomic operations and condition variable signaling.
- * @see render_loop()
+ * @pre backend is not null.
+ * @post should_redraw is true, and a waiter on cv_redraw has been notified.
+ *
+ * @note The flag is set before the notification, and there is no lock between
+ *       them. A waiting thread can wake, see the flag, and proceed before the
+ *       notification is sent. The waiter can then miss the signal and go back
+ *       to sleep, or it can process the flag without needing the notification.
+ * @warning The waiter's predicate must be checked under ui_mutex. Otherwise a
+ *          notification sent between the waiter's check and its wait can be
+ *          lost. Whether one or all waiters are woken depends on the default
+ *          argument of notify_cv_redraw(), which should be documented at that
+ *          declaration.
  */
 void UserInterface::request_redraw(void) {
-    this->should_redraw = true;
-    this->cv_redraw.notify_one();
+    this->backend->set_should_redraw(true);
+    this->backend->notify_cv_redraw();
 }
 
 /**
- * @brief Activates the spinner animation and triggers a UI redraw.
+ * Starts the spinner from frame 0 and requests a redraw.
  *
- * Acquires ui_mutex, sets spinner_active to true, resets spinner_frame to 0,
- * and sets should_redraw to true to display the spinner on the next render cycle.
+ * The function sets spinner_active to true, resets the spinner frame to 0
+ * through set_spinner_frame(0), and sets should_redraw to true. Each setter is
+ * atomic on its own, but the three updates are not performed as a group and
+ * ui_mutex is not held. cv_redraw is not notified.
  *
- * @note Thread-safe: acquires exclusive lock via lock_guard before modifying state.
- * @see stop_spinner(), draw_spinner()
+ * @pre backend is not null.
+ * @post get_spinner_active() returns true, the spinner frame is 0, and
+ *       should_redraw is true.
+ *
+ * @note A render thread can read the spinner state between the updates and see
+ *       a partial result, such as an active spinner that still shows the
+ *       previous frame.
+ * @warning If the three updates must appear together, hold ui_mutex across all
+ *          of them with a single scoped lock. Call notify_cv_redraw() afterward
+ *          if a waiting thread needs to wake up.
  */
 void UserInterface::start_spinner() {
-    std::lock_guard<std::mutex> lock(ui_mutex);
-    this->spinner_active = true;
-    this->spinner_frame = 0;
-    this->should_redraw = true;
+    this->backend->set_spinner_active(true);
+    this->backend->set_spinner_frame(0);
+    this->backend->set_should_redraw(true);
 }
 
 /**
- * @brief Deactivates the spinner animation and triggers a UI redraw.
+ * Stops the spinner, resets its frame to 0, and requests a redraw.
  *
- * Acquires ui_mutex, sets spinner_active to false, resets spinner_frame to 0,
- * and sets should_redraw to true to clear the spinner on the next render cycle.
+ * The function sets spinner_active to false, resets the spinner frame to 0
+ * through set_spinner_frame(0), and sets should_redraw to true. Each setter is
+ * atomic on its own, but the three updates are not performed as a group and
+ * ui_mutex is not held. cv_redraw is not notified.
  *
- * @note Thread-safe: acquires exclusive lock via lock_guard before modifying state.
- * @see start_spinner(), draw_spinner()
+ * @pre backend is not null.
+ * @post get_spinner_active() returns false, the spinner frame is 0, and
+ *       should_redraw is true.
+ *
+ * @note A render thread can read the spinner state between the updates and see
+ *       a partial result, such as an inactive spinner with the previous frame
+ *       still set.
+ * @warning If the three updates must appear together, hold ui_mutex across all
+ *          of them with a single scoped lock. Call notify_cv_redraw() afterward
+ *          if a waiting thread needs to wake up.
  */
 void UserInterface::stop_spinner() {
-    std::lock_guard<std::mutex> lock(ui_mutex);
-    this->spinner_active = false;
-    this->spinner_frame = 0;
-    this->should_redraw = true;
+    this->backend->set_spinner_active(false);
+    this->backend->set_spinner_frame(0);
+    this->backend->set_should_redraw(true);
 }
 
 /**
- * @brief Increments the spinner frame counter if the spinner is active.
+ * Advances the spinner to its next frame and requests a redraw, if the spinner
+ * is active.
  *
- * If spinner_active is true, advances spinner_frame with modulo 4 (cycling
- * through frames 0–3 to rotate the spinner characters |, /, -, \) and signals
- * a redraw to display the new frame.
+ * The function first checks get_spinner_active(). If the spinner is running, it
+ * advances the frame through set_spinner_frame() and then sets should_redraw.
+ * Nothing happens if the spinner is inactive. The check and the update are not
+ * performed under a lock, and the method does not notify cv_redraw.
  *
- * @note Called by render loop to update spinner animation each cycle.
- * @see is_spinner_active(), draw_spinner()
+ * @pre backend is not null.
+ * @post If the spinner was active at the check, its frame has advanced by one
+ *       step and should_redraw is true.
+ *
+ * @note The check and the update are not atomic together. If the spinner is
+ *       deactivated between them, the frame can still advance once after
+ *       deactivation. This is usually harmless for a visual effect.
+ * @warning Because cv_redraw is not notified, a waiting thread may not redraw
+ *          until it is woken by another call. Use notify_cv_redraw() if an
+ *          immediate redraw is needed.
  */
 void UserInterface::advance_spinner_frame() {
-    if (this->is_spinner_active()) {
-        this->spinner_frame = (spinner_frame + 1) % 4;
-        this->should_redraw = true;
+    if (this->backend->get_spinner_active()) {
+        this->backend->set_spinner_frame();
+        this->backend->set_should_redraw(true);
     }
 }
 
 /**
- * @brief Atomically queries whether the spinner animation is currently active.
+ * Updates the displayed progress percentage and requests a redraw.
  *
- * Returns the current value of the spinner_active atomic flag.
+ * The value is clamped to the range [0, 100] before being stored in the backend.
+ * The progress value and the redraw flag are set through two separate atomic
+ * operations, so the change is not applied as a single unit. This method does
+ * not acquire ui_mutex and does not notify cv_redraw.
  *
- * @return true if spinner is active, false otherwise.
- * @note Thread-safe: uses atomic load for safe concurrent access.
- * @see start_spinner(), stop_spinner()
- */
-bool UserInterface::is_spinner_active() const {
-    return spinner_active.load();
-}
-
-/**
- * @brief Updates the progress percentage displayed with the spinner.
+ * @param percent The requested progress percentage. Values below 0 are stored
+ *                as 0, and values above 100 are stored as 100.
  *
- * Clamps the provided percent value to the range [0, 100] and assigns it to
- * progress_percent, then signals a redraw to reflect the updated progress.
+ * @pre backend is not null.
+ * @post The backend's progress value is between 0 and 100, inclusive.
+ * @post should_redraw is set to true.
  *
- * @param percent Progress value to set; automatically clamped to [0, 100].
- * @note Clipping prevents invalid percentage values from being displayed.
- * @see draw_spinner()
+ * @note A thread that reads the progress value between the two calls can see
+ *       the new percentage before the redraw request is set. This is usually
+ *       harmless but can cause a brief inconsistency.
+ * @warning Because cv_redraw is not notified, a thread waiting on it may not
+ *          wake up to redraw. Callers that need an immediate redraw must notify
+ *          it separately with notify_cv_redraw().
  */
 void UserInterface::set_progress(int percent) {
-    this->progress_percent = std::clamp(percent, 0, 100);
-    this->should_redraw = true;
+    this->backend->set_progress_percent(std::clamp(percent, 0, 100));
+    this->backend->set_should_redraw(true);
 }

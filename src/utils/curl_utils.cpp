@@ -51,16 +51,15 @@ void CurlUtils::initialize() {
     std::string message{};
     if (!this->curl) {
         message = "Failed to initialize CURL.\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
-            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
         }
+        this->ui->end_session(EXIT_FAILURE);
     } else {
         message = "CURL is initialized.\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_success_noninteractive(message);
         } else {
             this->ui->print_success(message);
@@ -85,7 +84,7 @@ void CurlUtils::initialize() {
 void CurlUtils::cleanup() {
     if (this->curl) {
 #ifdef DEBUG
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_message_noninteractive(
                 std::format("\t[DEBUG] curl pointer before cleanup: {}\n", static_cast<void*>(this->curl.get())));
         }
@@ -94,7 +93,7 @@ void CurlUtils::cleanup() {
     }
     if (this->headers) {
 #ifdef DEBUG
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_message_noninteractive(std::format(
                 "\t[DEBUG] curl headers pointer before cleanup: {}\n", static_cast<void*>(this->headers.get())));
         }
@@ -102,7 +101,7 @@ void CurlUtils::cleanup() {
         this->headers.reset();
     }
     std::string message = "CURL cleanup is complete.\n";
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_success_noninteractive(message);
     } else {
         this->ui->print_success(message);
@@ -174,7 +173,7 @@ size_t CurlUtils::curl_streaming_write_callback(char* contents, size_t size, siz
     CurlUtils* curl_obj = static_cast<CurlUtils*>(userp);
 
 #ifdef DEBUG
-    if (UserInterface::ui_running(curl_obj->ui) == false) {
+    if (curl_obj->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(
             std::format("\t[DEBUG] 🔗 curl_streaming_write_callback called, size: {}\n", realsize));
     }
@@ -185,7 +184,7 @@ size_t CurlUtils::curl_streaming_write_callback(char* contents, size_t size, siz
         curl_obj->process_chunk(chunk);
     } catch (const std::exception& e) {
         std::string message = std::format("Exception in curl_streaming_write_callback: {}", e.what());
-        if (UserInterface::ui_running(curl_obj->ui) == false) {
+        if (curl_obj->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
         } else {
             curl_obj->ui->print_error(message);
@@ -217,7 +216,7 @@ size_t CurlUtils::curl_streaming_write_callback(char* contents, size_t size, siz
  */
 void CurlUtils::process_chunk(const std::string& chunk) {
 #ifdef DEBUG
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(
             std::format("\t[DEBUG] 🔥 process_chunk called with {}\n", chunk.size()));
     }
@@ -237,7 +236,7 @@ void CurlUtils::process_chunk(const std::string& chunk) {
         }
 
 #ifdef DEBUG
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_message_noninteractive(std::format(
                 "\t[DEBUG] 🔥 Extracted line: {} {}\n", line.substr(0, 80), (line.size() > 80 ? "..." : "")));
         }
@@ -245,7 +244,7 @@ void CurlUtils::process_chunk(const std::string& chunk) {
 
         if (line.empty() || line[0] != '{') {
 #ifdef DEBUG
-            if (UserInterface::ui_running(this->ui) == false) {
+            if (this->ui->backend_running() == false) {
                 UserInterface::print_message_noninteractive(std::format("\t[DEBUG] 🔥 Skipping non-JSON line.\n"));
             }
 #endif
@@ -255,14 +254,14 @@ void CurlUtils::process_chunk(const std::string& chunk) {
         // Pass only valid JSON lines to the callback.
         if (stream_callback) {
 #ifdef DEBUG
-            if (UserInterface::ui_running(this->ui) == false) {
+            if (this->ui->backend_running() == false) {
                 UserInterface::print_message_noninteractive(std::format("\t[DEBUG] 🔥 Calling stream_callback.\n"));
             }
 #endif
             stream_callback(line);
         } else {
 #ifdef DEBUG
-            if (UserInterface::ui_running(this->ui) == false) {
+            if (this->ui->backend_running() == false) {
                 UserInterface::print_message_noninteractive("⚠️  stream_callback is NULL!\n");
             }
 #endif
@@ -326,7 +325,7 @@ long CurlUtils::check_service_status(const std::string& url, const std::map<std:
 
     if (res != CURLE_OK) {
         std::string message = std::format("Curl error: {}\n", curl_easy_strerror(res));
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
         } else {
             this->ui->print_error(message);
@@ -357,7 +356,7 @@ long CurlUtils::wait_for_service(const std::string& url, const std::map<std::str
 
         if (http_code != -1) {
             message = std::format("Service available (HTTP {}) after {} attempt(s)\n", http_code, attempt + 1);
-            if (UserInterface::ui_running(this->ui) == false) {
+            if (this->ui->backend_running() == false) {
                 UserInterface::print_success_noninteractive(message);
             } else {
                 this->ui->print_success(message);
@@ -368,7 +367,7 @@ long CurlUtils::wait_for_service(const std::string& url, const std::map<std::str
         if (attempt < max_retries - 1) {
             message = std::format("⏳ Waiting for service... (attempt {}/{}, retrying in {}ms)\n", attempt + 1,
                                   max_retries, delay_ms);
-            if (UserInterface::ui_running(this->ui) == false) {
+            if (this->ui->backend_running() == false) {
                 UserInterface::print_message_noninteractive(message);
             } else {
                 this->ui->print_message(message);
@@ -379,7 +378,7 @@ long CurlUtils::wait_for_service(const std::string& url, const std::map<std::str
     }
 
     message = std::format("Service unavailable after {} attempts\n", max_retries);
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_error_noninteractive(message);
     } else {
         this->ui->print_error(message);
@@ -466,26 +465,25 @@ std::string CurlUtils::fetch_web_content(const std::string& url, std::optional<s
 
     if (result != CURLE_OK) {
         message = std::format("CURL error: {}\n", curl_easy_strerror(result));
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             if (content.error_buffer[0] != '\0') {
                 message += std::format("Details: {}\n", content.error_buffer);
             }
             UserInterface::print_error_noninteractive(message);
-            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
             if (content.error_buffer[0] != '\0') {
                 message = std::format("Details: {}\n", content.error_buffer);
                 this->ui->print_error(message);
             }
-            this->ui->end_session(EXIT_FAILURE);
         }
+        this->ui->end_session(EXIT_FAILURE);
     } else if (content.status != 200) {
         message = std::format("Request HTTP status: {}\n", content.status);
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
             if (fail_on_http_error == true) {
-                std::exit(EXIT_FAILURE);
+                this->ui->end_session(EXIT_FAILURE);
             } else {
                 throw HttpException(content.status, url);
             }
@@ -588,12 +586,12 @@ WebContentStream CurlUtils::fetch_web_content_stream(const std::string& url, std
         content.success = false;
         content.error_message = curl_easy_strerror(result);
         message = std::format("CURL error: {}\n", curl_easy_strerror(result));
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             if (content.error_buffer[0] != '\0') {
                 message += std::format("Details: {}\n", content.error_buffer);
             }
             UserInterface::print_error_noninteractive(message);
-            std::exit(EXIT_FAILURE);
+            this->ui->end_session(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
             if (content.error_buffer[0] != '\0') {
@@ -606,10 +604,10 @@ WebContentStream CurlUtils::fetch_web_content_stream(const std::string& url, std
         content.success = false;
         content.error_message = std::format("HTTP {}", content.status);
         message = std::format("Request HTTP status: {}\n", content.status);
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
             if (fail_on_http_error == true) {
-                std::exit(EXIT_FAILURE);
+                this->ui->end_session(EXIT_FAILURE);
             } else {
                 throw HttpException(content.status, url);
             }

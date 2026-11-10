@@ -27,13 +27,12 @@ SystemUtils::SystemUtils(std::shared_ptr<UserInterface> ui) : ui(ui) {
  *       returning. If it does return, report_failure returns to its caller.
  */
 void SystemUtils::report_failure(const std::string& message) {
-    if (UserInterface::ui_running(ui)) {
-        ui->print_error(message);
-        ui->end_session(EXIT_FAILURE);
+    if (this->ui->backend_running()) {
+        this->ui->print_error(message);
     } else {
         UserInterface::print_error_noninteractive(message);
-        std::exit(EXIT_FAILURE);
     }
+    this->ui->end_session(EXIT_FAILURE);
 }
 
 /**

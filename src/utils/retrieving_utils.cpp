@@ -63,7 +63,7 @@ std::vector<std::string> RetrievingUtils::retrieve(const std::string& question) 
     std::string response = this->curl->fetch_web_content(this->ollama_client->get_url_value("embed_url"), post_data);
 
 #ifdef DEBUG
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(std::format("\t[DEBUG] question embed response {}\n", response));
     }
 #endif
@@ -85,7 +85,7 @@ std::vector<std::string> RetrievingUtils::retrieve(const std::string& question) 
     response = this->curl->fetch_web_content(url, post_data, "POST", headers);
 
 #ifdef DEBUG
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(std::format("\t[DEBUG] search response {}\n", response));
     }
 #endif
@@ -156,7 +156,7 @@ Answer:
             this->ollama_client->get_url_value("generate_url"), post_data,
             [this](const std::string& chunk) { this->ollama_client->process_response_stream(chunk); });
         std::string message = std::format("Stream successful: {}, Status: {}\n", response.success, response.status);
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_message_noninteractive(message);
         } else {
             this->ui->print_message(message);
@@ -192,7 +192,7 @@ void RetrievingUtils::run() {
     const std::string& prompt = this->ollama_client->get_config_value<std::string>("prompt");
 
     std::string message = std::format("💬 user: {}\n", prompt);
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(message);
     } else {
         this->ui->print_message(message);

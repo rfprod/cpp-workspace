@@ -32,7 +32,7 @@ QdrantClient::QdrantClient(std::shared_ptr<UserInterface> ui, std::shared_ptr<Cu
 
     this->check_qdrant();
 
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive("\n");
     }
 }
@@ -49,7 +49,7 @@ QdrantClient::~QdrantClient() {
     std::string message{};
 
     message = "🛈 Qdrant docker container cleanup...\n";
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(message);
     } else {
         this->ui->print_message(message);
@@ -65,7 +65,7 @@ QdrantClient::~QdrantClient() {
     this->system_utils->catch_error(status);
 
     message = "Done.\n";
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_success_noninteractive(message);
     } else {
         this->ui->print_success(message);
@@ -116,7 +116,7 @@ void QdrantClient::setup() {
     status = system("docker ps | grep -q qdrant");
     if (status == 0) {
         message = "Qdrant is already running. Skipping docker run.\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_success_noninteractive(message);
         } else {
             this->ui->print_success(message);
@@ -125,7 +125,7 @@ void QdrantClient::setup() {
     }
 
     message = "🛈 Starting Qdrant container...\n";
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(message);
     } else {
         this->ui->print_message(message);
@@ -136,24 +136,22 @@ void QdrantClient::setup() {
 
     if (!qdrant_key || std::string(qdrant_key).empty()) {
         message = "QDRANT_API_KEY not set.\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
-            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
         }
+        this->ui->end_session(EXIT_FAILURE);
     }
 
     if (!qdrant_key_readonly || std::string(qdrant_key_readonly).empty()) {
         message = "QDRANT_API_KEY_READ_ONLY not set.\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
-            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
         }
+        this->ui->end_session(EXIT_FAILURE);
     }
 
     const std::string data_dir = std::string(std::getenv("HOME")) + "/qdrant";
@@ -172,24 +170,23 @@ void QdrantClient::setup() {
 
     if (system(docker_run_cmd.c_str()) != 0) {
         message = "Failed to start Qdrant container.\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
-            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
         }
+        this->ui->end_session(EXIT_FAILURE);
     }
 
     message = std::format("🛈 Qdrant container started with data dir {}\n", data_dir.c_str());
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(message);
     } else {
         this->ui->print_message(message);
     }
 
     message = "🛈 Qdrant dashboard is available at http://localhost:6333/dashboard\n";
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(message);
     } else {
         this->ui->print_message(message);
@@ -211,21 +208,21 @@ void QdrantClient::check_qdrant() {
 
     if (status == 200) {
         message = "Qdrant is healthy.\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_success_noninteractive(message);
         } else {
             this->ui->print_success(message);
         }
     } else if (status == -1) {
         message = "Failed to connect to Qdrant.\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
         } else {
             this->ui->print_error(message);
         }
     } else {
         message = std::format("⚠️ Qdrant returned {}.\n", status);
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_message_noninteractive(message);
         } else {
             this->ui->print_message(message);
@@ -249,7 +246,7 @@ bool QdrantClient::collection_exists(const std::string& collection_name) {
     try {
         this->curl->fetch_web_content(url, std::nullopt, "GET", headers, false);
         message = std::format("Collection '{}' exists", collection_name);
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_success_noninteractive(message);
         } else {
             this->ui->print_success(message);
@@ -257,7 +254,7 @@ bool QdrantClient::collection_exists(const std::string& collection_name) {
         return true;
     } catch (...) {
         message = std::format("⚠️ Collection '{}' does not exist", collection_name);
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_message_noninteractive(message);
         } else {
             this->ui->print_message(message);
@@ -280,7 +277,7 @@ void QdrantClient::delete_collection(const std::string& collection_name) {
         this->curl->fetch_web_content(url, std::nullopt, "DELETE", headers);
 
         std::string message = std::format("Deleted collection '{}'\n", collection_name);
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_success_noninteractive(message);
         } else {
             this->ui->print_success(message);
@@ -288,7 +285,7 @@ void QdrantClient::delete_collection(const std::string& collection_name) {
     } catch (const HttpException& e) {
         std::string message =
             std::format("[{}] Failed to delete collection '{}': {}\n", e.get_status_code(), collection_name, e.what());
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
         } else {
             this->ui->print_error(message);
@@ -316,7 +313,7 @@ void QdrantClient::create_collection(const std::string& collection_name, size_t 
 
         std::string message =
             std::format("Created collection '{}' with vector size {}\n", collection_name, vector_size);
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_success_noninteractive(message);
         } else {
             this->ui->print_success(message);
@@ -324,7 +321,7 @@ void QdrantClient::create_collection(const std::string& collection_name, size_t 
     } catch (const HttpException& e) {
         std::string message =
             std::format("[{}] Failed to create collection '{}': {}\n", e.get_status_code(), collection_name, e.what());
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
         } else {
             this->ui->print_error(message);
@@ -349,7 +346,7 @@ void QdrantClient::store(const std::vector<std::string>& texts, const std::vecto
 
     if (texts.empty() || embeddings.empty()) {
         message = "Cannot store: texts or embeddings are empty\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
         } else {
             this->ui->print_error(message);
@@ -359,7 +356,7 @@ void QdrantClient::store(const std::vector<std::string>& texts, const std::vecto
 
     if (texts.size() != embeddings.size()) {
         message = std::format("Mismatch: {} texts but {} embeddings\n", texts.size(), embeddings.size());
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
         } else {
             this->ui->print_error(message);
@@ -370,7 +367,7 @@ void QdrantClient::store(const std::vector<std::string>& texts, const std::vecto
     size_t vector_size = embeddings[0].size();
 
 #ifdef DEBUG
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(
             std::format("\t[DEBUG] Checking collection '{}'\n", collection_name));
     }
@@ -378,7 +375,7 @@ void QdrantClient::store(const std::vector<std::string>& texts, const std::vecto
 
     if (this->collection_exists(collection_name)) {
 #ifdef DEBUG
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_message_noninteractive(
                 std::format("\t[DEBUG] Collection '{}' exists, deleting...\n", collection_name));
         }
@@ -387,7 +384,7 @@ void QdrantClient::store(const std::vector<std::string>& texts, const std::vecto
     }
 
 #ifdef DEBUG
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(
             std::format("\t[DEBUG] Creating collection '{}' with vector size {}\n", collection_name, vector_size));
     }
@@ -408,7 +405,7 @@ void QdrantClient::store(const std::vector<std::string>& texts, const std::vecto
     std::map<std::string, std::string> headers{{"api-key", qdrant_key}};
 
 #ifdef DEBUG
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(
             std::format("\t[DEBUG] Storing {} embeddings to URL: {}\n", texts.size(), url));
     }
@@ -416,7 +413,7 @@ void QdrantClient::store(const std::vector<std::string>& texts, const std::vecto
     std::string response = this->curl->fetch_web_content(url, post_data, "PUT", headers);
 
     message = std::format("Stored {} embeddings in Qdrant.\nResponse: {}\n", texts.size(), response);
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_success_noninteractive(message);
     } else {
         this->ui->print_success(message);

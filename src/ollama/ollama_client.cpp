@@ -34,7 +34,7 @@ OllamaClient::OllamaClient(std::shared_ptr<OllamaClientConfig> config, std::shar
 
     this->check_ollama();
 
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive("\n");
     }
 }
@@ -143,16 +143,15 @@ void OllamaClient::check_ollama() {
     if (system("which ollama > /dev/null 2>&1")) {
         message = "Ollama binary does not exist.\nInstallation instructions: "
                   "https://docs.ollama.com/linux\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
-            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
         }
+        this->ui->end_session(EXIT_FAILURE);
     } else {
         message = "Ollama binary exists.\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_success_noninteractive(message);
         } else {
             this->ui->print_success(message);
@@ -194,7 +193,7 @@ void OllamaClient::process_response(std::string response) {
     try {
         json response_json = json::parse(response);
 
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             std::string message = std ::format(
                 "🦙 llama:\n{}\n---\n", this->trim_response(response_json["response"].get<std::string>()).c_str());
             UserInterface::print_message_noninteractive(message);
@@ -205,13 +204,12 @@ void OllamaClient::process_response(std::string response) {
         }
     } catch (const json::exception& err) {
         std::string message = std::format("JSON parse error: {}\n", err.what());
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
-            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
         }
+        this->ui->end_session(EXIT_FAILURE);
     }
 }
 
@@ -236,7 +234,7 @@ void OllamaClient::process_response(std::string response) {
  */
 void OllamaClient::process_response_stream(const std::string& line) {
 #ifdef DEBUG
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(
             std::format("\t[DEBUG] process_response_stream called with line: {}\n", line.substr(0, 100)));
     }
@@ -251,7 +249,7 @@ void OllamaClient::process_response_stream(const std::string& line) {
         bool is_streaming = !first_chunk;
         first_chunk = false;
 
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_message_noninteractive(text);
         } else {
             this->ui->print_message(text, is_streaming);
@@ -298,7 +296,7 @@ std::vector<std::vector<float>> OllamaClient::generate_embeddings(const std::vec
         std::string response = this->curl->fetch_web_content(this->urls.embed_url, post_data);
 
 #ifdef DEBUG
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_message_noninteractive(
                 std::format("\t[DEBUG] generate_embeddings response {}\n", response));
         }
@@ -326,7 +324,7 @@ std::vector<std::vector<float>> OllamaClient::generate_embeddings(const std::vec
 void OllamaClient::query_model(std::optional<OllamaClientConfig> config_opt) {
     std::string message =
         std::format("💬 user: {}\n", config_opt != std::nullopt ? config_opt->prompt.c_str() : config->prompt.c_str());
-    if (UserInterface::ui_running(this->ui) == false) {
+    if (this->ui->backend_running() == false) {
         UserInterface::print_message_noninteractive(message);
     } else {
         this->ui->print_message(message);
@@ -349,7 +347,7 @@ void OllamaClient::query_model(std::optional<OllamaClientConfig> config_opt) {
                 this->process_response_stream(chunk);
             });
         message = std::format("Stream successful: {}, Status: {}\n", response.success, response.status);
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_message_noninteractive(message);
         } else {
             this->ui->print_message(message);
@@ -386,17 +384,16 @@ std::vector<std::string> OllamaClient::query_model_list() {
 
         if (!data.contains("models") || !data["models"].is_array()) {
             message = "Response has no models array.\n";
-            if (UserInterface::ui_running(this->ui) == false) {
+            if (this->ui->backend_running() == false) {
                 UserInterface::print_error_noninteractive(message);
-                std::exit(EXIT_FAILURE);
             } else {
                 this->ui->print_error(message);
-                this->ui->end_session(EXIT_FAILURE);
             }
+            this->ui->end_session(EXIT_FAILURE);
         }
 
         message = "📃 available models:\n";
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_message_noninteractive(message);
         } else {
             this->ui->print_message(message);
@@ -414,7 +411,7 @@ std::vector<std::string> OllamaClient::query_model_list() {
             }
 
             message = std::format("{}\t ({}) \t{}\n", modified_at, size, name);
-            if (UserInterface::ui_running(this->ui) == false) {
+            if (this->ui->backend_running() == false) {
                 UserInterface::print_message_noninteractive(message);
             } else {
                 this->ui->print_message(message);
@@ -423,13 +420,12 @@ std::vector<std::string> OllamaClient::query_model_list() {
         UserInterface::print_message_noninteractive("\n");
     } catch (const json::exception& err) {
         message = std::format("JSON parse error: {}\n", err.what());
-        if (UserInterface::ui_running(this->ui) == false) {
+        if (this->ui->backend_running() == false) {
             UserInterface::print_error_noninteractive(message);
-            std::exit(EXIT_FAILURE);
         } else {
             this->ui->print_error(message);
-            this->ui->end_session(EXIT_FAILURE);
         }
+        this->ui->end_session(EXIT_FAILURE);
     }
 
     return models;

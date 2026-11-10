@@ -1,6 +1,6 @@
 #pragma once
 
-#include "utils/text_utils.hpp"
+#include "terminal_backend.hpp"
 #include <atomic>
 #include <condition_variable>
 #include <functional>
@@ -10,30 +10,6 @@
 #include <string>
 #include <thread>
 #include <vector>
-
-/**
- * @brief UI layout positioning configuration.
- *
- * Stores calculated row and column positions for all major UI elements
- * relative to terminal dimensions. Updated by update_layout() when terminal
- * is resized.
- */
-struct Layout {
-    // Row for input prompt.
-    int input_y;
-    // Column for input start.
-    int input_x;
-    // Row where output begins.
-    int output_y;
-    // Output area height.
-    int output_height;
-    // Row for status messages.
-    int status_y;
-    // Row for the progress spinner.
-    int spinner_y;
-    // Column for the progress spinner.
-    int spinner_x;
-};
 
 /**
  * @brief ncurses-based terminal user interface for interactive prompting and output display.
@@ -55,84 +31,11 @@ struct Layout {
  */
 class UserInterface {
   private:
-    // Message configuration constants.
-
-    // Plain text, default styling.
-    static constexpr int MESSAGE_TYPE_NORMAL = 0;
-    // Bold red with ❌ prefix.
-    static constexpr int MESSAGE_TYPE_ERROR = 1;
-    // Bold with ✅ prefix.
-    static constexpr int MESSAGE_TYPE_SUCCESS = 2;
-
-    // User Interface state.
-
-    static volatile sig_atomic_t resize_flag;
-    static volatile sig_atomic_t interrupt_flag;
     // A pointer to the user interface instance.
     static std::weak_ptr<UserInterface> instance;
 
-    // Layout state.
-    struct Layout layout;
-
-    // Input buffer state.
-    std::string input_buffer;
-    int input_cursor_x;
-
-    // Output buffer state.
-    std::vector<std::pair<std::string, int>> output_buffer;
-
-    // Renderer state.
-    std::thread render_thread;
-    std::mutex ui_mutex;
-    std::condition_variable cv_redraw;
-    std::atomic<bool> should_redraw{true};
-    std::atomic<bool> thread_running{false};
-
-    std::atomic<bool> terminal_restored{false};
-
-    // Spinner state.
-    std::atomic<bool> spinner_active{false};
-    std::atomic<int> spinner_frame{0};
-    std::atomic<int> progress_percent{0};
-
-    // Color theme configuration.
-    bool use_dark_theme = true;
-
-    // Initialization methods.
-
-    void init_dark_theme(void);
-
-    void init_light_theme(void);
-
-    void init_ncurses(void);
-
-    void cleanup_ncurses(void);
-
-    // Layout manpulation methods.
-
-    void draw_ui(void);
-
-    void draw_spinner(void);
-
-    void update_layout();
-
-    // Input area methods.
-
-    void clear_input_area();
-
-    void draw_input_area();
-
-    // Output area methods.
-
-    void draw_output_area();
-
-    // Renderer methods.
-
-    void start_render_thread(void);
-
-    void stop_render_thread(void);
-
-    void render_loop(void);
+    // A pointer to the terminal backend instance.
+    std::unique_ptr<TerminalBackend> backend;
 
   public:
     UserInterface();
@@ -145,13 +48,7 @@ class UserInterface {
 
     static std::shared_ptr<UserInterface> create(bool dark_theme);
 
-    bool is_running();
-
-    static bool ui_running(const std::shared_ptr<UserInterface>& user_interface);
-
-    static void handle_resize(int sig);
-
-    static void handle_interrupt(int sig);
+    bool backend_running();
 
     void run(void);
 
@@ -176,8 +73,6 @@ class UserInterface {
 
     static bool next_prompt_noninteractive(std::string* prompt);
 
-    void print(const std::string& text, int type = UserInterface::MESSAGE_TYPE_NORMAL, bool stream = false);
-
     void print_error(const std::string& text);
 
     static void print_error_noninteractive(const std::string& text);
@@ -190,7 +85,7 @@ class UserInterface {
 
     static void print_message_noninteractive(const std::string& text);
 
-    // Rendered methods
+    // Renderer methods
 
     void request_redraw(void);
 
@@ -201,8 +96,6 @@ class UserInterface {
     void stop_spinner(void);
 
     void advance_spinner_frame(void);
-
-    bool is_spinner_active(void) const;
 
     void set_progress(int percent);
 

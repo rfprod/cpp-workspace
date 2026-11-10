@@ -46,7 +46,7 @@ void EmbeddingUtils::create_embedings(const std::vector<std::string>& urls) {
     std::string message{};
 
     message = "⏳ Fetching documents from URLs...\n";
-    if (UserInterface::ui_running(this->ui) == true) {
+    if (this->ui->backend_running() == true) {
         this->ui->print_message(message);
     } else {
         UserInterface::print_message_noninteractive(message);
@@ -59,7 +59,7 @@ void EmbeddingUtils::create_embedings(const std::vector<std::string>& urls) {
     }
 
     message = "⏳ Splitting documents into chunks...\n";
-    if (UserInterface::ui_running(this->ui) == true) {
+    if (this->ui->backend_running() == true) {
         this->ui->print_message(message);
     } else {
         UserInterface::print_message_noninteractive(message);
@@ -72,7 +72,7 @@ void EmbeddingUtils::create_embedings(const std::vector<std::string>& urls) {
     }
 
     message = "⏳ Generating embeddings...\n";
-    if (UserInterface::ui_running(this->ui) == true) {
+    if (this->ui->backend_running() == true) {
         this->ui->print_message(message);
     } else {
         UserInterface::print_message_noninteractive(message);
@@ -80,7 +80,7 @@ void EmbeddingUtils::create_embedings(const std::vector<std::string>& urls) {
     auto embeddings = this->ollama_client->generate_embeddings(document_chunks);
 
     message = "⏳ Storing embeddings in Qdrant...\n";
-    if (UserInterface::ui_running(this->ui) == true) {
+    if (this->ui->backend_running() == true) {
         this->ui->print_message(message);
     } else {
         UserInterface::print_message_noninteractive(message);
@@ -88,7 +88,7 @@ void EmbeddingUtils::create_embedings(const std::vector<std::string>& urls) {
     this->storage_client->store(document_chunks, embeddings);
 
     message = "Embeddings created.\n";
-    if (UserInterface::ui_running(this->ui) == true) {
+    if (this->ui->backend_running() == true) {
         this->ui->print_success(message);
     } else {
         UserInterface::print_success_noninteractive(message);
