@@ -3,7 +3,6 @@
 #include <csignal>
 #include <cstdlib>
 #include <memory>
-#include <sys/wait.h>
 #include <vector>
 
 #include "../tests/interface/user_interface_mock.hpp"
@@ -20,12 +19,6 @@ constexpr int exited_with(int code) {
 // Builds the wait status for a process stopped by a signal (WIFSTOPPED).
 constexpr int stopped_by(int sig) {
     return 0x7f | (sig << 8);
-}
-
-// Used by death tests so the whole call runs in the child process.
-void run_catch_error(int status) {
-    SystemUtils su(std::make_shared<UserInterface>());
-    su.catch_error(status);
 }
 
 } // namespace
@@ -76,11 +69,16 @@ TEST_F(SystemUtils_catch_error, non_zero_exit_interactive_reports_and_ends_sessi
     EXPECT_TRUE(fake_ui::calls.noninteractive.empty());
 }
 
-TEST_F(SystemUtils_catch_error, non_zero_exit_non_interactive_reports_and_exits) {
+TEST_F(SystemUtils_catch_error, non_zero_exit_non_interactive_reports_and_ends_session) {
     fake_ui::calls.running = false;
+    SystemUtils su(std::make_shared<UserInterface>());
 
-    EXPECT_EXIT(run_catch_error(exited_with(3)), ::testing::ExitedWithCode(EXIT_FAILURE),
-                "Command failed with exit code 3\\.");
+    su.catch_error(exited_with(3));
+
+    ASSERT_EQ(fake_ui::calls.noninteractive.size(), 1u);
+    EXPECT_EQ(fake_ui::calls.noninteractive[0], "Command failed with exit code 3.\n");
+    EXPECT_EQ(fake_ui::calls.end_codes, std::vector<int>{EXIT_FAILURE});
+    EXPECT_TRUE(fake_ui::calls.errors.empty());
 }
 
 TEST_F(SystemUtils_catch_error, exit_code_255_is_reported_exactly) {
@@ -107,10 +105,15 @@ TEST_F(SystemUtils_catch_error, killed_by_signal_interactive_reports_abnormal_te
     EXPECT_EQ(fake_ui::calls.end_codes, std::vector<int>{EXIT_FAILURE});
 }
 
-TEST_F(SystemUtils_catch_error, killed_by_signal_non_interactive_exits) {
+TEST_F(SystemUtils_catch_error, killed_by_signal_non_interactive_reports_and_ends_session) {
     fake_ui::calls.running = false;
+    SystemUtils su(std::make_shared<UserInterface>());
 
-    EXPECT_EXIT(run_catch_error(SIGKILL), ::testing::ExitedWithCode(EXIT_FAILURE), "Command terminated abnormally\\.");
+    su.catch_error(SIGKILL);
+
+    ASSERT_EQ(fake_ui::calls.noninteractive.size(), 1u);
+    EXPECT_EQ(fake_ui::calls.noninteractive[0], "Command terminated abnormally.\n");
+    EXPECT_EQ(fake_ui::calls.end_codes, std::vector<int>{EXIT_FAILURE});
 }
 
 TEST_F(SystemUtils_catch_error, stopped_process_is_treated_as_abnormal) {
@@ -139,6 +142,11 @@ TEST_F(SystemUtils_catch_error, system_failure_interactive_reports_only_once) {
 
 TEST_F(SystemUtils_catch_error, system_failure_non_interactive_reports_only_once) {
     fake_ui::calls.running = false;
+    SystemUtils su(std::make_shared<UserInterface>());
 
-    EXPECT_EXIT(run_catch_error(-1), ::testing::ExitedWithCode(EXIT_FAILURE), "system\\(\\) failed\\.");
+    su.catch_error(-1);
+
+    ASSERT_EQ(fake_ui::calls.noninteractive.size(), 1u);
+    EXPECT_EQ(fake_ui::calls.noninteractive[0], "system() failed.\n");
+    EXPECT_EQ(fake_ui::calls.end_codes, std::vector<int>{EXIT_FAILURE});
 }

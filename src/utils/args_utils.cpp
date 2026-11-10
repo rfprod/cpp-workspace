@@ -1,4 +1,5 @@
 #include "args_utils.hpp"
+#include "utils/exit_request.hpp"
 
 /**
  * Initializes the ArgsUtils instance with command-line argument handlers.

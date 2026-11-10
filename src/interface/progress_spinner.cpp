@@ -59,7 +59,7 @@ void ProgressSpinner::start() {
     }
     this->active = true;
 
-    if (this->ui == nullptr || UserInterface::ui_running(this->ui) == false) {
+    if (this->ui == nullptr || !this->ui->backend_running()) {
         this->spinner_thread = std::thread([this]() {
             const char spinner_chars[] = {'|', '/', '-', '\\'};
             int i = 0;
@@ -114,7 +114,7 @@ void ProgressSpinner::stop() {
  * @note This method is called frequently by CURL; keep it lightweight.
  */
 int ProgressSpinner::progress_callback_impl(curl_off_t dltotal, curl_off_t dlnow) {
-    if (this->ui == nullptr || !UserInterface::ui_running(this->ui)) {
+    if (this->ui == nullptr || !this->ui->backend_running()) {
         const char spinner_chars[] = {'|', '/', '-', '\\'};
 
         if (dltotal > 0) {

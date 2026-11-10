@@ -17,15 +17,15 @@ inline Calls calls; // Test code resets and inspects this.
 
 } // namespace fake_ui
 
-UserInterface::UserInterface() : input_cursor_x(0), layout({}), use_dark_theme(true) {
+UserInterface::UserInterface() {
 }
 
-UserInterface::UserInterface(bool dark_theme) : input_cursor_x(0), layout({}), use_dark_theme(dark_theme) {
+UserInterface::UserInterface(bool dark_theme) {
 }
 
 UserInterface::~UserInterface() = default;
 
-bool UserInterface::ui_running(const std::shared_ptr<UserInterface>&) {
+bool UserInterface::backend_running() {
     return fake_ui::calls.running;
 }
 
