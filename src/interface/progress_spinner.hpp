@@ -48,7 +48,7 @@ class ProgressSpinner {
 
     void stop();
 
-    int progress_callback_impl(curl_off_t dltotal, curl_off_t dlnow);
+    int progress_callback_impl(curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow);
 
     static int progress_callback(void* clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal,
                                  curl_off_t ulnow);

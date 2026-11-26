@@ -103,36 +103,50 @@ void ProgressSpinner::stop() {
 /**
  * Internal progress callback for CURL integration.
  *
- * Processes download progress information and updates the spinner or UI accordingly.
- * Displays a progress bar (▰▰▰▱) with percentage if total size is known.
+ * Processes transfer progress and updates the spinner or UI accordingly.
+ * Reports download progress by default and upload progress while an upload
+ * is in progress. Displays a progress bar (▰▰▰▱) with percentage if the
+ * total size is known.
  *
  * @param dltotal Total bytes to download (0 if unknown).
  * @param dlnow Bytes downloaded so far.
+ * @param ultotal Total bytes to upload (0 if unknown).
+ * @param ulnow Bytes uploaded so far.
  *
  * @return 0 to continue the CURL operation, non-zero to abort.
  *
  * @note This method is called frequently by CURL; keep it lightweight.
  */
-int ProgressSpinner::progress_callback_impl(curl_off_t dltotal, curl_off_t dlnow) {
-    if (this->ui == nullptr || !this->ui->backend_running()) {
-        const char spinner_chars[] = {'|', '/', '-', '\\'};
+int ProgressSpinner::progress_callback_impl(curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal,
+                                            curl_off_t ulnow) {
+    const bool uploading = (dltotal <= 0 && dlnow <= 0) && (ultotal > 0 || ulnow > 0);
+    const curl_off_t total = uploading ? ultotal : dltotal;
+    const curl_off_t now = uploading ? ulnow : dlnow;
+    const char* label = uploading ? "Upload" : "Progress";
 
-        if (dltotal > 0) {
-            int progress = (dlnow * 100) / dltotal;
-            fprintf(stdout, "\r▰▰▰▱ Progress %d%%     ", progress);
-            fflush(stdout);
+    int progress = -1;
+    if (total > 0) {
+        progress = static_cast<int>((now * 100) / total);
+        if (progress < 0) progress = 0;
+        if (progress > 100) progress = 100;
+    }
+
+    if (this->ui == nullptr || !this->ui->backend_running()) {
+        static const char spinner_chars[] = {'|', '/', '-', '\\'};
+
+        if (progress >= 0) {
+            fprintf(stdout, "\r▰▰▰▱ %s %d%%     ", label, progress);
         } else {
             static int i = 0;
             fprintf(stdout, "\r%c Loading...", spinner_chars[i++ % 4]);
-            fflush(stdout);
         }
+        fflush(stdout);
         return 0;
     }
 
     this->ui->advance_spinner_frame();
 
-    if (dltotal > 0) {
-        int progress = (dlnow * 100) / dltotal;
+    if (progress >= 0) {
         this->ui->set_progress(progress);
     }
 
@@ -150,8 +164,8 @@ int ProgressSpinner::progress_callback_impl(curl_off_t dltotal, curl_off_t dlnow
  *                CURLOPT_XFERINFODATA).
  * @param dltotal Total bytes to download (0 if unknown).
  * @param dlnow Bytes downloaded so far.
- * @param ultotal Total bytes to upload (unused).
- * @param ulnow Bytes uploaded so far (unused).
+ * @param ultotal Total bytes to upload.
+ * @param ulnow Bytes uploaded so fa.
  *
  * @return 0 to continue the CURL operation, 1 to abort if clientp is nullptr.
  *
@@ -164,5 +178,5 @@ int ProgressSpinner::progress_callback(void* clientp, curl_off_t dltotal, curl_o
     if (self == nullptr) {
         return 1;
     }
-    return self->progress_callback_impl(dltotal, dlnow);
+    return self->progress_callback_impl(dltotal, dlnow, ultotal, ulnow);
 }
