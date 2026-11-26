@@ -192,10 +192,12 @@ void TerminalBackend::install_signal_handlers() {
 }
 
 void TerminalBackend::handle_resize(int sig) {
+    fprintf(stdout, "handle_resize signal %d", sig);
     TerminalBackend::resize_flag.store(true, std::memory_order_relaxed);
 }
 
 void TerminalBackend::handle_interrupt(int sig) {
+    fprintf(stdout, "handle_interrupt signal %d", sig);
     TerminalBackend::interrupt_flag.store(true, std::memory_order_relaxed);
 }
 
@@ -543,7 +545,8 @@ void TerminalBackend::draw_spinner() {
  * to ensure all UI elements remain properly positioned and sized when the terminal is resized.
  */
 void TerminalBackend::update_layout() {
-    int max_y, max_x;
+    int max_y;
+    int max_x;
     getmaxyx(stdscr, max_y, max_x);
 
     layout.status_y = max_y - 1;
@@ -566,7 +569,8 @@ void TerminalBackend::update_layout() {
  * Maintains visual consistency by preserving the terminal border structure.
  */
 void TerminalBackend::clear_input_area() {
-    int max_y, max_x;
+    int max_y;
+    int max_x;
     getmaxyx(stdscr, max_y, max_x);
 
     mvhline(layout.input_y, 1, ' ', max_x - 2);

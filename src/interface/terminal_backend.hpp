@@ -43,15 +43,15 @@ class TerminalBackend {
     static std::atomic<bool> resize_flag;
     static std::atomic<bool> interrupt_flag;
 
-    // Layout state.
-    struct Layout layout;
-
     // Input buffer state.
     std::string input_buffer;
     int input_cursor_x;
 
     // Output buffer state.
     std::vector<std::pair<std::string, int>> output_buffer;
+
+    // Layout state.
+    struct Layout layout;
 
     // Renderer state.
     std::thread render_thread;

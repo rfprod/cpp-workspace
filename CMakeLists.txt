@@ -11,8 +11,18 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
+set(EXTENDED_BUILD_INFO_FILE "${CMAKE_BINARY_DIR}/cmake_build_info.txt")
+file(WRITE  "${EXTENDED_BUILD_INFO_FILE}" "CMake Version: ${CMAKE_VERSION}\n")
+file(APPEND "${EXTENDED_BUILD_INFO_FILE}" "C++ Compiler: ${CMAKE_CXX_COMPILER_ID} ${CMAKE_CXX_COMPILER_VERSION}\n")
+file(APPEND "${EXTENDED_BUILD_INFO_FILE}" "System: ${CMAKE_SYSTEM_NAME} ${CMAKE_SYSTEM_VERSION}\n")
+file(APPEND "${EXTENDED_BUILD_INFO_FILE}" "Project Version: ${PROJECT_VERSION}\n")
+
 option(CPP_WORKSPACE_BUILD_TESTS "Build unit tests" ON)
 option(ENABLE_COVERAGE "Build with gcov instrumentation" OFF)
+
+set_directory_properties(PROPERTIES
+  COMPILE_OPTIONS "-Wall;-Wextra"
+)
 
 if(ENABLE_COVERAGE)
   if(NOT CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
@@ -55,6 +65,15 @@ target_link_libraries(cpp-workspace-core
   CURL::libcurl
   nlohmann_json::nlohmann_json
   Curses::Curses
+)
+
+add_custom_command(
+    TARGET cpp-workspace-app
+    PRE_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+            "${CMAKE_SOURCE_DIR}/LICENSE"
+            "${CMAKE_BINARY_DIR}/bin/LICENSE"
+    COMMENT "ℹ️ Copied LICENSE to the bin folder."
 )
 
 if(CPP_WORKSPACE_BUILD_TESTS)

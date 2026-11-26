@@ -57,14 +57,14 @@ class QdrantClient {
     std::shared_ptr<UserInterface> ui;
 
     /**
-     * Pointer to the SystemUtils for processing `system()` calls.
-     */
-    std::shared_ptr<SystemUtils> system_utils;
-
-    /**
      * A CURL wrapper containing pre-configured internal logic.
      */
     std::shared_ptr<CurlUtils> curl;
+
+    /**
+     * Pointer to the SystemUtils for processing `system()` calls.
+     */
+    std::shared_ptr<SystemUtils> system_utils;
 
     void setup();
 

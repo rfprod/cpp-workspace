@@ -405,7 +405,7 @@ main() {
   fi
 
   local RELEASE_DIR
-  RELEASE_DIR="$BUILD_DIR/release"
+  RELEASE_DIR="$BUILD_DIR/$BUILD_TYPE"
 
   mkdir -p "$RELEASE_DIR"
   cat > "$RELEASE_DIR/BUILD_INFO.txt" << EOF
